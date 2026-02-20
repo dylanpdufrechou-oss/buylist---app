@@ -54,7 +54,9 @@
               <option value="3DS">3DS</option>
               <option value="DS">DS</option>
             </select>
-            <input value="CIB" disabled />
+            <select id="condition" required>
+              <option value="CIB">CIB</option>
+            </select>
             <input id="price" placeholder="Price (e.g. 19.99)" type="number" min="0" step="0.01" required />
             <select id="active">
               <option value="1">Active</option>
@@ -65,17 +67,100 @@
         </section>
 
         <section class="card">
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem">
+          <div class="row-actions" style="margin-bottom: 0.75rem">
             <button id="refreshGames" class="secondary">Refresh Games</button>
             <button id="saveAllGames" class="secondary">Save All</button>
-            <button id="exportCsv" class="secondary">Export CSV</button>
+            <button id="exportCsv" class="secondary">Export All</button>
+            <button id="exportFilteredCsv" class="secondary">Export Filtered</button>
             <label class="secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.8rem; border: 1px solid var(--line); border-radius: 10px; cursor: pointer;">
               Import CSV
               <input id="importCsv" type="file" accept=".csv" style="display: none" />
             </label>
             <span class="muted">CSV header: title,platform,condition,price,active</span>
           </div>
+
+          <div id="gamesFilterBar" class="games-filter-bar">
+            <div class="games-filter-grid">
+              <input id="gamesSearch" placeholder="Search title..." />
+              <select id="gamesFilterPlatform">
+                <option value="all">All Platforms</option>
+              </select>
+              <select id="gamesFilterCondition">
+                <option value="all">All Conditions</option>
+              </select>
+              <select id="gamesFilterActive">
+                <option value="all">All Statuses</option>
+                <option value="active">Active only</option>
+                <option value="inactive">Inactive only</option>
+              </select>
+              <input id="gamesFilterPriceMin" type="number" min="0" step="0.01" placeholder="Min $" />
+              <input id="gamesFilterPriceMax" type="number" min="0" step="0.01" placeholder="Max $" />
+              <button id="clearGameFilters" type="button" class="secondary">Clear Filters</button>
+            </div>
+            <div id="gamesFilterCount" class="games-filter-count muted">Showing 0 of 0</div>
+          </div>
+
+          <div id="bulkToolbar" class="bulk-toolbar is-hidden">
+            <strong id="bulkSelectedCount">0 selected</strong>
+            <div class="bulk-controls">
+              <select id="bulkSetActive">
+                <option value="">Set Active...</option>
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+              <button id="applyBulkActive" type="button" class="secondary">Apply</button>
+
+              <select id="bulkSetCondition">
+                <option value="">Set Condition...</option>
+              </select>
+              <button id="applyBulkCondition" type="button" class="secondary">Apply</button>
+
+              <select id="bulkPriceDirection">
+                <option value="increase">Increase</option>
+                <option value="decrease">Decrease</option>
+              </select>
+              <select id="bulkPriceMode">
+                <option value="amount">$ Amount</option>
+                <option value="percent">% Percent</option>
+              </select>
+              <input id="bulkPriceValue" type="number" min="0" step="0.01" placeholder="Value" />
+              <button id="applyBulkPriceAdjust" type="button" class="secondary">Apply</button>
+
+              <button id="bulkRound99" type="button" class="secondary">Round .99</button>
+              <button id="bulkRoundDollar" type="button" class="secondary">Round Dollar</button>
+              <button id="bulkDeleteSelected" type="button" class="danger">Delete Selected</button>
+            </div>
+          </div>
+
+          <section id="importPreviewPanel" class="import-preview is-hidden">
+            <h3 style="margin-top: 0">Import Preview</h3>
+            <div id="importPreviewSummary" class="muted"></div>
+            <div id="importPreviewErrors" class="muted"></div>
+            <div id="importPreviewRows" style="margin-top: 0.6rem"></div>
+            <div class="grid two" style="margin-top: 0.8rem">
+              <div class="grid">
+                <label for="importMode">Import behavior</label>
+                <select id="importMode">
+                  <option value="upsert">Update existing + add new</option>
+                  <option value="add">Add new only</option>
+                  <option value="replace">Replace all (danger)</option>
+                </select>
+                <label><input id="importSkipDuplicates" type="checkbox" /> Skip duplicates</label>
+                <label><input id="importStopOnError" type="checkbox" /> Stop on error</label>
+                <input id="importReplaceConfirm" class="is-hidden" placeholder="Type REPLACE to confirm" />
+              </div>
+              <div class="row-actions" style="align-items: end">
+                <button id="commitImport" type="button">Commit Import</button>
+                <button id="cancelImport" type="button" class="secondary">Cancel</button>
+              </div>
+            </div>
+          </section>
+
           <div id="gamesWrap"></div>
+          <div id="saveChangesBar" class="save-changes-bar">
+            <span id="unsavedChangesCount">Unsaved changes: 0</span>
+            <button id="saveChangesBtn" type="button" disabled>Save Changes</button>
+          </div>
         </section>
 
         <section class="card">

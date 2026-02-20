@@ -583,6 +583,12 @@ button.danger {
   border-color: #ad4e6b;
 }
 
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: none;
+}
+
 .grid {
   display: grid;
   gap: 0.65rem;
@@ -677,6 +683,101 @@ td {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+
+input[type='checkbox'] {
+  width: auto;
+  padding: 0;
+  accent-color: var(--brand);
+}
+
+.games-filter-bar {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 30;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(10, 18, 46, 0.94);
+  padding: 0.7rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+
+.games-filter-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 0.8fr 0.8fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.games-filter-count {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.bulk-toolbar {
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(12, 22, 56, 0.86);
+  padding: 0.7rem;
+  margin-bottom: 0.75rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.bulk-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.bulk-controls select,
+.bulk-controls input {
+  width: auto;
+  min-width: 110px;
+}
+
+.bulk-controls button {
+  min-height: 38px;
+}
+
+.import-preview {
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(9, 16, 43, 0.86);
+  padding: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.import-preview label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.games-table tr.row-dirty td {
+  background: rgba(255, 228, 91, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 216, 102, 0.45);
+}
+
+.save-changes-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 35;
+  margin-top: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(10, 18, 46, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.save-changes-bar.has-changes {
+  border-color: rgba(255, 216, 102, 0.6);
 }
 
 .submissions-filters {
@@ -934,6 +1035,21 @@ a {
 
   .submissions-filters {
     grid-template-columns: 1fr;
+  }
+
+  .games-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bulk-controls select,
+  .bulk-controls input,
+  .bulk-controls button {
+    width: 100%;
+  }
+
+  .save-changes-bar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .platform-tabs {

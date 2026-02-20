@@ -43,8 +43,9 @@ function parsePriceToCents(raw) {
   return Math.round(value * 100);
 }
 
-function normalizeCondition() {
-  return 'CIB';
+function normalizeCondition(raw) {
+  const value = safeString(raw);
+  return value || 'CIB';
 }
 
 function currentMonthVersion() {
@@ -92,11 +93,161 @@ function asPublicGame(row) {
     id: row.id,
     title: row.title,
     platform: row.platform,
-    condition_note: normalizeCondition(),
+    condition_note: normalizeCondition(row.condition_note),
     price_cents: row.price_cents,
     price: centsToMoney(row.price_cents),
     active: Boolean(row.active),
     updated_at: row.updated_at,
+  };
+}
+
+function parseActiveValue(raw) {
+  const value = safeString(raw).toLowerCase();
+  if (value === '1' || value === 'true' || value === 'yes' || value === 'active') return 1;
+  if (value === '0' || value === 'false' || value === 'no' || value === 'inactive') return 0;
+  return null;
+}
+
+function gameKey(title, platform, condition) {
+  return `${safeString(title).toLowerCase()}|${safeString(platform).toLowerCase()}|${normalizeCondition(condition).toLowerCase()}`;
+}
+
+function splitCsvLineSimple(line) {
+  return String(line || '')
+    .split(',')
+    .map((part) => part.trim());
+}
+
+function parseGamesCsv(csvText) {
+  const lines = String(csvText || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const expectedHeader = 'title,platform,condition,price,active';
+  if (lines.length < 2) {
+    return {
+      rows: [],
+      errors: [{ row: 1, reason: 'CSV must include a header and at least one row.' }],
+      expectedHeader,
+    };
+  }
+
+  if (safeString(lines[0]).toLowerCase() !== expectedHeader) {
+    return {
+      rows: [],
+      errors: [{ row: 1, reason: `Invalid header. Use exactly: ${expectedHeader}` }],
+      expectedHeader,
+    };
+  }
+
+  const rows = [];
+  const errors = [];
+  for (let i = 1; i < lines.length; i += 1) {
+    const rowNumber = i + 1;
+    const parts = splitCsvLineSimple(lines[i]);
+    if (parts.length !== 5) {
+      errors.push({ row: rowNumber, reason: 'Expected 5 columns: title,platform,condition,price,active.' });
+      continue;
+    }
+
+    const [titleRaw, platformRaw, conditionRaw, priceRaw, activeRaw] = parts;
+    const title = safeString(titleRaw);
+    const platform = safeString(platformRaw);
+    const condition = normalizeCondition(conditionRaw);
+    const priceCents = parsePriceToCents(priceRaw);
+    const active = parseActiveValue(activeRaw);
+
+    if (!title) {
+      errors.push({ row: rowNumber, reason: 'Missing title.' });
+      continue;
+    }
+    if (!platform) {
+      errors.push({ row: rowNumber, reason: 'Missing platform.' });
+      continue;
+    }
+    if (!safeString(conditionRaw)) {
+      errors.push({ row: rowNumber, reason: 'Missing condition.' });
+      continue;
+    }
+    if (priceCents === null) {
+      errors.push({ row: rowNumber, reason: 'Invalid price.' });
+      continue;
+    }
+    if (active === null) {
+      errors.push({ row: rowNumber, reason: 'Invalid active value. Use 1/0 or true/false.' });
+      continue;
+    }
+
+    rows.push({
+      row: rowNumber,
+      title,
+      platform,
+      condition,
+      priceCents,
+      price: Number((priceCents / 100).toFixed(2)),
+      active,
+      key: gameKey(title, platform, condition),
+    });
+  }
+
+  return { rows, errors, expectedHeader };
+}
+
+function currentGamesByKey() {
+  const map = new Map();
+  const rows = db.prepare('SELECT id, title, platform, condition_note FROM games').all();
+  for (const row of rows) {
+    const key = gameKey(row.title, row.platform, row.condition_note);
+    if (!map.has(key)) map.set(key, row);
+  }
+  return map;
+}
+
+function buildGameFilterWhere(query) {
+  const clauses = [];
+  const params = [];
+
+  const search = safeString(query.search || query.q).toLowerCase();
+  if (search) {
+    clauses.push('LOWER(title) LIKE ?');
+    params.push(`%${search}%`);
+  }
+
+  const platform = safeString(query.platform);
+  if (platform && platform.toLowerCase() !== 'all') {
+    clauses.push('platform = ?');
+    params.push(platform);
+  }
+
+  const condition = safeString(query.condition);
+  if (condition && condition.toLowerCase() !== 'all') {
+    clauses.push('condition_note = ?');
+    params.push(condition);
+  }
+
+  const active = safeString(query.active).toLowerCase();
+  if (active === 'active') {
+    clauses.push('active = 1');
+  } else if (active === 'inactive') {
+    clauses.push('active = 0');
+  }
+
+  const minPriceCents = parsePriceToCents(query.minPrice);
+  if (safeString(query.minPrice) && minPriceCents !== null) {
+    clauses.push('price_cents >= ?');
+    params.push(minPriceCents);
+  }
+
+  const maxPriceCents = parsePriceToCents(query.maxPrice);
+  if (safeString(query.maxPrice) && maxPriceCents !== null) {
+    clauses.push('price_cents <= ?');
+    params.push(maxPriceCents);
+  }
+
+  return {
+    whereSql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
+    params,
   };
 }
 
@@ -218,8 +369,6 @@ function initDb() {
     tx(rows);
   }
 
-  db.prepare('UPDATE games SET condition_note = ?').run(normalizeCondition());
-
   const faqCount = db.prepare('SELECT COUNT(*) AS c FROM faqs').get().c;
   if (faqCount === 0) {
     const insertFaq = db.prepare(
@@ -328,6 +477,162 @@ app.get('/api/games', (req, res) => {
 app.get('/api/admin/games', requireAdmin, (req, res) => {
   const rows = getGameRows(true).map((row) => asPublicGame(row));
   res.json(rows);
+});
+
+app.post('/api/admin/games/import-preview', requireAdmin, (req, res) => {
+  const { csv } = req.body || {};
+  if (!csv || typeof csv !== 'string') {
+    return res.status(400).json({ error: 'CSV content is required.' });
+  }
+
+  const parsed = parseGamesCsv(csv);
+  const existingMap = currentGamesByKey();
+  const seenKeys = new Set();
+  let newRows = 0;
+  let updateRows = 0;
+  let duplicateRows = 0;
+
+  const previewRows = parsed.rows.map((row) => {
+    const duplicateInFile = seenKeys.has(row.key);
+    if (!duplicateInFile) seenKeys.add(row.key);
+    const existing = existingMap.get(row.key);
+    if (existing) updateRows += 1;
+    else newRows += 1;
+    if (existing || duplicateInFile) duplicateRows += 1;
+
+    let status = 'New';
+    if (existing && duplicateInFile) status = 'Duplicate in file, updates existing';
+    else if (existing) status = 'Updates existing';
+    else if (duplicateInFile) status = 'Duplicate in file';
+
+    return {
+      row: row.row,
+      title: row.title,
+      platform: row.platform,
+      condition: row.condition,
+      price: row.price,
+      active: row.active === 1,
+      status,
+    };
+  });
+
+  res.json({
+    summary: {
+      totalRows: parsed.rows.length + parsed.errors.length,
+      validRows: parsed.rows.length,
+      newRows,
+      updateRows,
+      duplicateRows,
+      errorRows: parsed.errors.length,
+    },
+    previewRows,
+    errors: parsed.errors,
+  });
+});
+
+app.post('/api/admin/games/import-commit', requireAdmin, (req, res) => {
+  const { csv, mode, skipDuplicates, stopOnError, replaceConfirm } = req.body || {};
+  if (!csv || typeof csv !== 'string') {
+    return res.status(400).json({ error: 'CSV content is required.' });
+  }
+
+  const importMode = safeString(mode).toLowerCase();
+  const resolvedMode = importMode === 'add' || importMode === 'replace' ? importMode : 'upsert';
+  if (resolvedMode === 'replace' && safeString(replaceConfirm) !== 'REPLACE') {
+    return res.status(400).json({ error: 'Type REPLACE to confirm full replace mode.' });
+  }
+
+  const parsed = parseGamesCsv(csv);
+  if (stopOnError && parsed.errors.length > 0) {
+    return res.status(400).json({
+      error: 'Import contains validation errors. Fix errors or disable stop on error.',
+      errors: parsed.errors,
+    });
+  }
+  if (parsed.rows.length === 0) {
+    return res.status(400).json({
+      error: 'No valid rows found in CSV import.',
+      errors: parsed.errors,
+    });
+  }
+
+  const dedupedRows = [];
+  const dedupeIndex = new Map();
+  let duplicateInFileCount = 0;
+  let skipped = 0;
+  for (const row of parsed.rows) {
+    if (!dedupeIndex.has(row.key)) {
+      dedupeIndex.set(row.key, dedupedRows.length);
+      dedupedRows.push(row);
+      continue;
+    }
+    duplicateInFileCount += 1;
+    if (skipDuplicates) {
+      skipped += 1;
+      continue;
+    }
+    const idx = dedupeIndex.get(row.key);
+    dedupedRows[idx] = row;
+  }
+
+  const existingMap = currentGamesByKey();
+  const insertGame = db.prepare(
+    `INSERT INTO games (title, platform, condition_note, price_cents, active, updated_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))`
+  );
+  const updateGame = db.prepare(
+    `UPDATE games
+     SET title = ?, platform = ?, condition_note = ?, price_cents = ?, active = ?, updated_at = datetime('now')
+     WHERE id = ?`
+  );
+
+  let inserted = 0;
+  let updated = 0;
+  let existingDuplicateCount = 0;
+
+  const tx = db.transaction(() => {
+    if (resolvedMode === 'replace') {
+      db.prepare('DELETE FROM games').run();
+      for (const row of dedupedRows) {
+        insertGame.run(row.title, row.platform, row.condition, row.priceCents, row.active);
+        inserted += 1;
+      }
+      return;
+    }
+
+    for (const row of dedupedRows) {
+      const existing = existingMap.get(row.key);
+      if (existing) {
+        existingDuplicateCount += 1;
+        if (skipDuplicates) {
+          skipped += 1;
+          continue;
+        }
+        if (resolvedMode === 'add') {
+          skipped += 1;
+          continue;
+        }
+        updateGame.run(row.title, row.platform, row.condition, row.priceCents, row.active, existing.id);
+        updated += 1;
+        continue;
+      }
+      insertGame.run(row.title, row.platform, row.condition, row.priceCents, row.active);
+      inserted += 1;
+    }
+  });
+
+  tx();
+
+  res.json({
+    ok: true,
+    mode: resolvedMode,
+    inserted,
+    updated,
+    skipped,
+    duplicates: duplicateInFileCount + existingDuplicateCount,
+    errors: parsed.errors.length,
+    validationErrors: parsed.errors,
+  });
 });
 
 app.get('/api/faqs', (req, res) => {
@@ -867,7 +1172,7 @@ app.delete('/api/admin/faqs/:id', requireAdmin, (req, res) => {
 });
 
 app.post('/api/admin/games', requireAdmin, (req, res) => {
-  const { title, platform, price, active } = req.body || {};
+  const { title, platform, condition, condition_note, conditionNote, price, active } = req.body || {};
   if (!title || typeof title !== 'string') {
     return res.status(400).json({ error: 'Title is required' });
   }
@@ -876,6 +1181,7 @@ app.post('/api/admin/games', requireAdmin, (req, res) => {
   if (priceCents === null) {
     return res.status(400).json({ error: 'Price must be a non-negative number' });
   }
+  const normalizedCondition = normalizeCondition(condition ?? condition_note ?? conditionNote);
 
   const info = db
     .prepare(
@@ -886,12 +1192,20 @@ app.post('/api/admin/games', requireAdmin, (req, res) => {
     .run(
       title.trim(),
       (platform || '').trim(),
-      normalizeCondition(),
+      normalizedCondition,
       priceCents,
       active === false ? 0 : 1
     );
 
-  res.status(201).json({ ok: true, id: Number(info.lastInsertRowid) });
+  const created = db
+    .prepare(
+      `SELECT id, title, platform, condition_note, price_cents, active, updated_at
+       FROM games
+       WHERE id = ?`
+    )
+    .get(Number(info.lastInsertRowid));
+
+  res.status(201).json({ ok: true, id: Number(info.lastInsertRowid), game: asPublicGame(created) });
 });
 
 app.put('/api/admin/games/:id', requireAdmin, (req, res) => {
@@ -905,7 +1219,7 @@ app.put('/api/admin/games/:id', requireAdmin, (req, res) => {
     return res.status(404).json({ error: 'Game not found' });
   }
 
-  const { title, platform, price, active } = req.body || {};
+  const { title, platform, condition, condition_note, conditionNote, price, active } = req.body || {};
   if (!title || typeof title !== 'string') {
     return res.status(400).json({ error: 'Title is required' });
   }
@@ -914,6 +1228,7 @@ app.put('/api/admin/games/:id', requireAdmin, (req, res) => {
   if (priceCents === null) {
     return res.status(400).json({ error: 'Price must be a non-negative number' });
   }
+  const normalizedCondition = normalizeCondition(condition ?? condition_note ?? conditionNote);
 
   db.prepare(
     `UPDATE games
@@ -927,7 +1242,7 @@ app.put('/api/admin/games/:id', requireAdmin, (req, res) => {
   ).run(
     title.trim(),
     (platform || '').trim(),
-    normalizeCondition(),
+    normalizedCondition,
     priceCents,
     active ? 1 : 0,
     id
@@ -967,20 +1282,11 @@ app.post('/api/admin/games/import-csv', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'CSV content is required' });
   }
 
-  const lines = csv
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length < 2) {
-    return res.status(400).json({ error: 'CSV must include a header and at least one row' });
-  }
-
-  const header = lines[0].toLowerCase();
-  const expectedHeader = 'title,platform,condition,price,active';
-  if (header !== expectedHeader) {
+  const parsed = parseGamesCsv(csv);
+  if (parsed.errors.length > 0) {
     return res.status(400).json({
-      error: `Invalid header. Use exactly: ${expectedHeader}`,
+      error: `Import has ${parsed.errors.length} error(s).`,
+      errors: parsed.errors,
     });
   }
 
@@ -996,47 +1302,27 @@ app.post('/api/admin/games/import-csv', requireAdmin, (req, res) => {
       insert.run(
         row.title,
         row.platform,
-        row.conditionNote,
+        row.condition,
         row.priceCents,
         row.active
       );
     }
   });
 
-  const parsed = [];
-  for (let i = 1; i < lines.length; i += 1) {
-    const parts = lines[i].split(',');
-    if (parts.length !== 5) {
-      return res.status(400).json({ error: `Invalid row ${i + 1}` });
-    }
-
-    const [title, platform, _conditionNote, priceRaw, activeRaw] = parts.map((v) => v.trim());
-    const priceCents = parsePriceToCents(priceRaw);
-    if (!title || priceCents === null) {
-      return res.status(400).json({ error: `Invalid values in row ${i + 1}` });
-    }
-
-    parsed.push({
-      title,
-      platform,
-      conditionNote: normalizeCondition(),
-      priceCents,
-      active: activeRaw === '0' || activeRaw.toLowerCase() === 'false' ? 0 : 1,
-    });
-  }
-
-  tx(parsed);
-  res.json({ ok: true, imported: parsed.length });
+  tx(parsed.rows);
+  res.json({ ok: true, imported: parsed.rows.length });
 });
 
 app.get('/api/admin/games/export-csv', requireAdmin, (req, res) => {
+  const filter = buildGameFilterWhere(req.query || {});
   const rows = db
     .prepare(
       `SELECT title, platform, condition_note, price_cents, active
        FROM games
+       ${filter.whereSql}
        ORDER BY title ASC`
     )
-    .all();
+    .all(...filter.params);
 
   const lines = ['title,platform,condition,price,active'];
   for (const r of rows) {
@@ -1044,7 +1330,7 @@ app.get('/api/admin/games/export-csv', requireAdmin, (req, res) => {
       [
         r.title,
         r.platform || '',
-        normalizeCondition(),
+        normalizeCondition(r.condition_note),
         (r.price_cents / 100).toFixed(2),
         r.active ? '1' : '0',
       ].join(',')

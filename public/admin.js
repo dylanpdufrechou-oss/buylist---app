@@ -11,7 +11,51 @@ const gamesWrap = document.getElementById('gamesWrap');
 const refreshGamesBtn = document.getElementById('refreshGames');
 const saveAllGamesBtn = document.getElementById('saveAllGames');
 const exportCsvBtn = document.getElementById('exportCsv');
+const exportFilteredCsvBtn = document.getElementById('exportFilteredCsv');
 const importCsvInput = document.getElementById('importCsv');
+const addTitleInput = document.getElementById('title');
+const addPlatformInput = document.getElementById('platform');
+const addConditionInput = document.getElementById('condition');
+const addPriceInput = document.getElementById('price');
+const addActiveInput = document.getElementById('active');
+
+const gamesSearchInput = document.getElementById('gamesSearch');
+const gamesFilterPlatformInput = document.getElementById('gamesFilterPlatform');
+const gamesFilterConditionInput = document.getElementById('gamesFilterCondition');
+const gamesFilterActiveInput = document.getElementById('gamesFilterActive');
+const gamesFilterPriceMinInput = document.getElementById('gamesFilterPriceMin');
+const gamesFilterPriceMaxInput = document.getElementById('gamesFilterPriceMax');
+const clearGameFiltersBtn = document.getElementById('clearGameFilters');
+const gamesFilterCount = document.getElementById('gamesFilterCount');
+
+const bulkToolbar = document.getElementById('bulkToolbar');
+const bulkSelectedCount = document.getElementById('bulkSelectedCount');
+const bulkSetActiveInput = document.getElementById('bulkSetActive');
+const applyBulkActiveBtn = document.getElementById('applyBulkActive');
+const bulkSetConditionInput = document.getElementById('bulkSetCondition');
+const applyBulkConditionBtn = document.getElementById('applyBulkCondition');
+const bulkPriceDirectionInput = document.getElementById('bulkPriceDirection');
+const bulkPriceModeInput = document.getElementById('bulkPriceMode');
+const bulkPriceValueInput = document.getElementById('bulkPriceValue');
+const applyBulkPriceAdjustBtn = document.getElementById('applyBulkPriceAdjust');
+const bulkRound99Btn = document.getElementById('bulkRound99');
+const bulkRoundDollarBtn = document.getElementById('bulkRoundDollar');
+const bulkDeleteSelectedBtn = document.getElementById('bulkDeleteSelected');
+
+const saveChangesBar = document.getElementById('saveChangesBar');
+const unsavedChangesCount = document.getElementById('unsavedChangesCount');
+const saveChangesBtn = document.getElementById('saveChangesBtn');
+
+const importPreviewPanel = document.getElementById('importPreviewPanel');
+const importPreviewSummary = document.getElementById('importPreviewSummary');
+const importPreviewErrors = document.getElementById('importPreviewErrors');
+const importPreviewRows = document.getElementById('importPreviewRows');
+const importModeInput = document.getElementById('importMode');
+const importSkipDuplicatesInput = document.getElementById('importSkipDuplicates');
+const importStopOnErrorInput = document.getElementById('importStopOnError');
+const importReplaceConfirmInput = document.getElementById('importReplaceConfirm');
+const commitImportBtn = document.getElementById('commitImport');
+const cancelImportBtn = document.getElementById('cancelImport');
 
 const addFaqForm = document.getElementById('addFaqForm');
 const faqWrap = document.getElementById('faqWrap');
@@ -33,10 +77,25 @@ const toastContainer = document.getElementById('toastContainer');
 
 let adminKey = '';
 let games = [];
+let gameDrafts = new Map();
+const selectedGameIds = new Set();
+let pendingImportCsv = '';
+let pendingImportPreview = null;
 let faqs = [];
 const platformOptions = ['Wii', 'PS3', 'PS2', 'OG Xbox', 'Xbox 360', 'Wii U', '3DS', 'DS'];
 const BUYLIST_UPDATED_EVENT = 'buylistUpdatedAt';
 const BUYLIST_SNAPSHOT_EVENT = 'buylistSnapshot';
+const LAST_PLATFORM_KEY = 'adminLastPlatform';
+const LAST_CONDITION_KEY = 'adminLastCondition';
+
+const gameFilters = {
+  search: '',
+  platform: 'all',
+  condition: 'all',
+  active: 'all',
+  minPrice: '',
+  maxPrice: '',
+};
 
 let submissionsState = {
   page: 1,
@@ -83,8 +142,10 @@ function money(price) {
 }
 
 function renderPlatformSelect(id, selectedValue) {
+  const dynamicPlatforms = getAllPlatformsFromDrafts();
+  const mergedOptions = Array.from(new Set([...platformOptions, ...dynamicPlatforms]));
   const normalizedSelected = selectedValue || '';
-  const hasSelected = normalizedSelected && platformOptions.includes(normalizedSelected);
+  const hasSelected = normalizedSelected && mergedOptions.includes(normalizedSelected);
   return `
     <select data-field="platform" data-id="${id}">
       <option value="">Select Platform</option>
@@ -93,7 +154,7 @@ function renderPlatformSelect(id, selectedValue) {
           ? `<option value="${escapeHtml(normalizedSelected)}" selected>${escapeHtml(normalizedSelected)}</option>`
           : ''
       }
-      ${platformOptions
+      ${mergedOptions
         .map(
           (platform) =>
             `<option value="${escapeHtml(platform)}" ${normalizedSelected === platform ? 'selected' : ''}>${escapeHtml(
@@ -105,27 +166,80 @@ function renderPlatformSelect(id, selectedValue) {
   `;
 }
 
+function normalizeConditionValue(raw) {
+  const value = String(raw || '').trim();
+  return value || 'CIB';
+}
+
+function renderConditionSelect(id, selectedValue) {
+  const options = getAllConditionsFromDrafts();
+  const normalizedSelected = normalizeConditionValue(selectedValue);
+  const merged = options.includes(normalizedSelected) ? options : [...options, normalizedSelected];
+
+  return `
+    <select data-field="condition_note" data-id="${id}">
+      ${merged
+        .map(
+          (condition) =>
+            `<option value="${escapeHtml(condition)}" ${normalizedSelected === condition ? 'selected' : ''}>${escapeHtml(
+              condition
+            )}</option>`
+        )
+        .join('')}
+    </select>
+  `;
+}
+
 function getGameById(id) {
   return games.find((g) => g.id === id);
 }
 
-function getRowPayload(id) {
+function getDraftById(id) {
+  return gameDrafts.get(id);
+}
+
+function gameToDraft(game) {
   return {
-    title: gamesWrap.querySelector(`input[data-field="title"][data-id="${id}"]`).value.trim(),
-    platform: gamesWrap.querySelector(`select[data-field="platform"][data-id="${id}"]`).value.trim(),
-    price: Number(gamesWrap.querySelector(`input[data-field="price"][data-id="${id}"]`).value),
-    active: gamesWrap.querySelector(`select[data-field="active"][data-id="${id}"]`).value === '1',
+    id: game.id,
+    title: String(game.title || ''),
+    platform: String(game.platform || ''),
+    condition_note: normalizeConditionValue(game.condition_note),
+    price: Number(game.price || 0),
+    active: Boolean(game.active),
+    deleted: false,
   };
 }
 
-function isRowChanged(existing, payload) {
-  if (!existing) return false;
+function resetDraftsFromGames() {
+  gameDrafts = new Map();
+  for (const game of games) {
+    gameDrafts.set(game.id, gameToDraft(game));
+  }
+  selectedGameIds.clear();
+}
+
+function getRowPayloadFromDraft(id) {
+  const draft = getDraftById(id);
+  if (!draft) return null;
+  return {
+    title: String(draft.title || '').trim(),
+    platform: String(draft.platform || '').trim(),
+    condition: normalizeConditionValue(draft.condition_note),
+    price: Number(draft.price),
+    active: Boolean(draft.active),
+  };
+}
+
+function isRowChanged(existing, payload, isDeleted = false) {
+  if (!existing || !payload) return false;
+  if (isDeleted) return true;
   const existingPrice = Number(existing.price);
   const nextPrice = Number(payload.price);
 
   return (
     payload.title !== String(existing.title || '') ||
     payload.platform !== String(existing.platform || '') ||
+    normalizeConditionValue(payload.condition) !== normalizeConditionValue(existing.condition_note) ||
     payload.active !== Boolean(existing.active) ||
     Number.isNaN(nextPrice) ||
     Math.abs(existingPrice - nextPrice) >= 0.001
@@ -155,24 +269,456 @@ function markBuylistUpdated() {
   localStorage.setItem(BUYLIST_SNAPSHOT_EVENT, JSON.stringify({ updatedAt: now, games }));
 }
 
-async function saveGame(id, payload, quiet = false) {
-  const res = await adminFetch(`/api/admin/games/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(payload),
+function getAllPlatformsFromDrafts() {
+  const set = new Set();
+  for (const draft of gameDrafts.values()) {
+    if (!draft.deleted && draft.platform) set.add(draft.platform);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function getAllConditionsFromDrafts() {
+  const set = new Set(['CIB']);
+  for (const draft of gameDrafts.values()) {
+    if (!draft.deleted && draft.condition_note) set.add(normalizeConditionValue(draft.condition_note));
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function syncSelectOptions(selectEl, values, allLabel = null) {
+  if (!selectEl) return;
+  const current = String(selectEl.value || '');
+  const options = allLabel ? [{ value: 'all', label: allLabel }] : [];
+  for (const value of values) {
+    options.push({ value, label: value });
+  }
+  selectEl.innerHTML = options
+    .map((opt) => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`)
+    .join('');
+  if (options.some((opt) => opt.value === current)) {
+    selectEl.value = current;
+  }
+}
+
+function syncGameFilterOptions() {
+  syncSelectOptions(gamesFilterPlatformInput, getAllPlatformsFromDrafts(), 'All Platforms');
+  syncSelectOptions(gamesFilterConditionInput, getAllConditionsFromDrafts(), 'All Conditions');
+  syncSelectOptions(bulkSetConditionInput, [''].concat(getAllConditionsFromDrafts()), null);
+  syncSelectOptions(addConditionInput, getAllConditionsFromDrafts(), null);
+  if (bulkSetConditionInput && bulkSetConditionInput.options.length > 0) {
+    bulkSetConditionInput.options[0].textContent = 'Set Condition...';
+  }
+}
+
+function readGameFiltersFromInputs() {
+  gameFilters.search = String(gamesSearchInput?.value || '').trim().toLowerCase();
+  gameFilters.platform = String(gamesFilterPlatformInput?.value || 'all');
+  gameFilters.condition = String(gamesFilterConditionInput?.value || 'all');
+  gameFilters.active = String(gamesFilterActiveInput?.value || 'all');
+  gameFilters.minPrice = String(gamesFilterPriceMinInput?.value || '').trim();
+  gameFilters.maxPrice = String(gamesFilterPriceMaxInput?.value || '').trim();
+}
+
+function clearGameFilters() {
+  if (gamesSearchInput) gamesSearchInput.value = '';
+  if (gamesFilterPlatformInput) gamesFilterPlatformInput.value = 'all';
+  if (gamesFilterConditionInput) gamesFilterConditionInput.value = 'all';
+  if (gamesFilterActiveInput) gamesFilterActiveInput.value = 'all';
+  if (gamesFilterPriceMinInput) gamesFilterPriceMinInput.value = '';
+  if (gamesFilterPriceMaxInput) gamesFilterPriceMaxInput.value = '';
+  readGameFiltersFromInputs();
+}
+
+function draftMatchesFilters(draft) {
+  if (draft.deleted) return false;
+  if (gameFilters.search && !String(draft.title || '').toLowerCase().includes(gameFilters.search)) return false;
+  if (gameFilters.platform !== 'all' && String(draft.platform || '') !== gameFilters.platform) return false;
+  if (gameFilters.condition !== 'all' && normalizeConditionValue(draft.condition_note) !== gameFilters.condition) return false;
+  if (gameFilters.active === 'active' && !draft.active) return false;
+  if (gameFilters.active === 'inactive' && draft.active) return false;
+
+  const min = Number(gameFilters.minPrice);
+  if (gameFilters.minPrice && Number.isFinite(min) && Number(draft.price) < min) return false;
+  const max = Number(gameFilters.maxPrice);
+  if (gameFilters.maxPrice && Number.isFinite(max) && Number(draft.price) > max) return false;
+  return true;
+}
+
+function getFilteredDrafts() {
+  const rows = Array.from(gameDrafts.values()).filter((draft) => draftMatchesFilters(draft));
+  rows.sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+  return rows;
+}
+
+function getVisibleNonDeletedCount() {
+  return Array.from(gameDrafts.values()).filter((draft) => !draft.deleted).length;
+}
+
+function getDirtyDraftIds() {
+  const ids = [];
+  for (const [id, draft] of gameDrafts.entries()) {
+    const original = getGameById(id);
+    const payload = getRowPayloadFromDraft(id);
+    if (isRowChanged(original, payload, Boolean(draft.deleted))) ids.push(id);
+  }
+  return ids;
+}
+
+function getDirtyCount() {
+  return getDirtyDraftIds().length;
+}
+
+function updateSaveChangesUi() {
+  const count = getDirtyCount();
+  if (unsavedChangesCount) {
+    unsavedChangesCount.textContent = `Unsaved changes: ${count}`;
+  }
+  if (saveChangesBtn) {
+    saveChangesBtn.disabled = count === 0;
+  }
+  if (saveAllGamesBtn) {
+    saveAllGamesBtn.disabled = count === 0;
+  }
+  if (saveChangesBar) {
+    saveChangesBar.classList.toggle('has-changes', count > 0);
+  }
+}
+
+function updateFilterCount() {
+  const visible = getFilteredDrafts().length;
+  const total = getVisibleNonDeletedCount();
+  if (gamesFilterCount) {
+    gamesFilterCount.textContent = `Showing ${visible} of ${total}`;
+  }
+}
+
+function reconcileSelectedIds() {
+  for (const id of Array.from(selectedGameIds)) {
+    const draft = getDraftById(id);
+    if (!draft || draft.deleted) {
+      selectedGameIds.delete(id);
+    }
+  }
+}
+
+function getSelectedDrafts() {
+  reconcileSelectedIds();
+  const rows = [];
+  for (const id of selectedGameIds) {
+    const draft = getDraftById(id);
+    if (draft && !draft.deleted) rows.push(draft);
+  }
+  return rows;
+}
+
+function updateBulkToolbarUi() {
+  const count = getSelectedDrafts().length;
+  if (bulkSelectedCount) {
+    bulkSelectedCount.textContent = `${count} selected`;
+  }
+  if (bulkToolbar) {
+    bulkToolbar.classList.toggle('is-hidden', count === 0);
+  }
+}
+
+function renderGamesTable() {
+  readGameFiltersFromInputs();
+  reconcileSelectedIds();
+  syncGameFilterOptions();
+  readGameFiltersFromInputs();
+  updateFilterCount();
+  updateSaveChangesUi();
+  updateBulkToolbarUi();
+
+  const rows = getFilteredDrafts();
+  if (rows.length === 0) {
+    gamesWrap.innerHTML = '<p class="muted">No games match the current filters.</p>';
+    return;
+  }
+  const dirtySet = new Set(getDirtyDraftIds());
+
+  gamesWrap.innerHTML = `
+    <table class="games-table">
+      <thead>
+        <tr>
+          <th style="width:42px"><input type="checkbox" id="selectAllVisibleGames" /></th>
+          <th>Title</th>
+          <th>Platform</th>
+          <th>Condition</th>
+          <th>Price</th>
+          <th>Active</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map((draft) => {
+            const id = Number(draft.id);
+            const isDirty = dirtySet.has(id);
+            return `
+              <tr data-game-id="${id}" class="${isDirty ? 'row-dirty' : ''}">
+                <td><input type="checkbox" data-select-game-id="${id}" ${selectedGameIds.has(id) ? 'checked' : ''} /></td>
+                <td><input data-field="title" data-id="${id}" value="${escapeHtml(draft.title)}" /></td>
+                <td>${renderPlatformSelect(id, draft.platform || '')}</td>
+                <td>${renderConditionSelect(id, draft.condition_note || 'CIB')}</td>
+                <td><input data-field="price" data-id="${id}" type="number" min="0" step="0.01" value="${escapeHtml(
+                  Number.isFinite(Number(draft.price)) ? Number(draft.price).toFixed(2) : '0.00'
+                )}" style="width: 100px" /></td>
+                <td>
+                  <select data-field="active" data-id="${id}">
+                    <option value="1" ${draft.active ? 'selected' : ''}>Yes</option>
+                    <option value="0" ${!draft.active ? 'selected' : ''}>No</option>
+                  </select>
+                </td>
+                <td class="row-actions">
+                  <button class="secondary" data-action="reset-row" data-id="${id}" type="button">Reset</button>
+                  <button class="danger" data-action="delete-row" data-id="${id}" type="button">Delete</button>
+                </td>
+              </tr>
+            `;
+          })
+          .join('')}
+      </tbody>
+    </table>
+  `;
+
+  const visibleIds = rows.map((row) => Number(row.id));
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedGameIds.has(id));
+  const selectAll = document.getElementById('selectAllVisibleGames');
+  if (selectAll) {
+    selectAll.checked = allVisibleSelected;
+    selectAll.addEventListener('change', () => {
+      if (selectAll.checked) {
+        for (const id of visibleIds) selectedGameIds.add(id);
+      } else {
+        for (const id of visibleIds) selectedGameIds.delete(id);
+      }
+      updateBulkToolbarUi();
+      renderGamesTable();
+    });
+  }
+
+  gamesWrap.querySelectorAll('input[data-select-game-id]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const id = Number(el.getAttribute('data-select-game-id'));
+      if (!Number.isInteger(id)) return;
+      if (el.checked) selectedGameIds.add(id);
+      else selectedGameIds.delete(id);
+      updateBulkToolbarUi();
+      renderGamesTable();
+    });
   });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error || 'Could not update');
 
-  if (body.game) {
-    const idx = games.findIndex((g) => g.id === body.game.id);
-    if (idx !== -1) games[idx] = body.game;
+  gamesWrap.querySelectorAll('[data-field]').forEach((el) => {
+    const field = String(el.getAttribute('data-field') || '');
+    const id = Number(el.getAttribute('data-id'));
+    if (!Number.isInteger(id)) return;
+
+    const eventName = field === 'title' || field === 'price' ? 'input' : 'change';
+    el.addEventListener(eventName, () => {
+      const draft = getDraftById(id);
+      if (!draft) return;
+      if (field === 'title') draft.title = String(el.value || '');
+      if (field === 'platform') draft.platform = String(el.value || '').trim();
+      if (field === 'condition_note') draft.condition_note = normalizeConditionValue(el.value);
+      if (field === 'price') {
+        const value = Number(el.value);
+        draft.price = Number.isFinite(value) && value >= 0 ? value : 0;
+      }
+      if (field === 'active') draft.active = String(el.value) === '1';
+
+      if (
+        gameFilters.search ||
+        gameFilters.platform !== 'all' ||
+        gameFilters.condition !== 'all' ||
+        gameFilters.active !== 'all' ||
+        gameFilters.minPrice ||
+        gameFilters.maxPrice
+      ) {
+        renderGamesTable();
+        return;
+      }
+
+      const row = gamesWrap.querySelector(`tr[data-game-id="${id}"]`);
+      if (row) {
+        const payload = getRowPayloadFromDraft(id);
+        const original = getGameById(id);
+        row.classList.toggle('row-dirty', isRowChanged(original, payload, Boolean(draft.deleted)));
+      }
+      updateSaveChangesUi();
+      updateFilterCount();
+    });
+  });
+
+  gamesWrap.querySelectorAll('button[data-action="reset-row"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.getAttribute('data-id'));
+      const original = getGameById(id);
+      if (!original) return;
+      gameDrafts.set(id, gameToDraft(original));
+      renderGamesTable();
+    });
+  });
+
+  gamesWrap.querySelectorAll('button[data-action="delete-row"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.getAttribute('data-id'));
+      const draft = getDraftById(id);
+      if (!draft) return;
+      if (!confirm(`This will mark "${draft.title}" for deletion on save. Continue?`)) return;
+      draft.deleted = true;
+      selectedGameIds.delete(id);
+      renderGamesTable();
+    });
+  });
+}
+
+function confirmBulkUpdate(count) {
+  if (count <= 0) {
+    renderNotice('Select at least one row first.', 'warn');
+    return false;
+  }
+  return confirm(`This will update ${count} rows. Continue?`);
+}
+
+function applyBulkUpdate(mutator, successLabel) {
+  const selected = getSelectedDrafts();
+  if (!confirmBulkUpdate(selected.length)) return;
+  for (const draft of selected) mutator(draft);
+  renderGamesTable();
+  showToast(successLabel);
+}
+
+async function saveDirtyChanges() {
+  const dirtyIds = getDirtyDraftIds();
+  if (dirtyIds.length === 0) {
+    renderNotice('No pending edits to save.');
+    return;
   }
 
+  const failures = [];
+  for (const id of dirtyIds) {
+    const draft = getDraftById(id);
+    const payload = getRowPayloadFromDraft(id);
+    if (!draft || !payload) continue;
+    try {
+      if (draft.deleted) {
+        const res = await adminFetch(`/api/admin/games/${id}`, { method: 'DELETE' });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || `Could not delete ${payload.title}`);
+      } else {
+        const res = await adminFetch(`/api/admin/games/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || `Could not update ${payload.title}`);
+      }
+    } catch (err) {
+      failures.push(err.message || `Row ${id} failed`);
+    }
+  }
+
+  if (failures.length > 0) {
+    renderNotice(`Saved with ${failures.length} error(s): ${failures[0]}`, 'error');
+    showToast('Some changes failed', 'error');
+    await loadGames();
+    return;
+  }
+
+  await loadGames();
   markBuylistUpdated();
-  if (!quiet) {
-    renderNotice('Game updated.');
-    showToast('Saved');
+  renderNotice(`Saved ${dirtyIds.length} change${dirtyIds.length === 1 ? '' : 's'}.`);
+  showToast('Saved');
+}
+
+function renderImportPreview(preview, csv) {
+  pendingImportCsv = csv;
+  pendingImportPreview = preview;
+  if (!importPreviewPanel) return;
+
+  importPreviewPanel.classList.remove('is-hidden');
+  const summary = preview.summary || {};
+  importPreviewSummary.innerHTML = `
+    <strong>Summary:</strong>
+    New ${Number(summary.newRows || 0)} |
+    Updates ${Number(summary.updateRows || 0)} |
+    Duplicates ${Number(summary.duplicateRows || 0)} |
+    Errors ${Number(summary.errorRows || 0)}
+  `;
+
+  const errors = Array.isArray(preview.errors) ? preview.errors : [];
+  if (errors.length === 0) {
+    importPreviewErrors.innerHTML = '<span class="muted">No validation errors found.</span>';
+  } else {
+    importPreviewErrors.innerHTML = `
+      <div class="notice warn" style="margin-top:0.6rem">
+        <strong>Errors (${errors.length}):</strong>
+        <ul style="margin:0.5rem 0 0; padding-left:1rem">
+          ${errors
+            .slice(0, 10)
+            .map((err) => `<li>Row ${Number(err.row || 0)}: ${escapeHtml(err.reason || 'Invalid row')}</li>`)
+            .join('')}
+        </ul>
+      </div>
+    `;
   }
+
+  const rows = Array.isArray(preview.previewRows) ? preview.previewRows : [];
+  if (rows.length === 0) {
+    importPreviewRows.innerHTML = '<p class="muted">No valid rows to preview.</p>';
+  } else {
+    importPreviewRows.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Title</th>
+            <th>Platform</th>
+            <th>Condition</th>
+            <th>Price</th>
+            <th>Active</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows
+            .slice(0, 20)
+            .map(
+              (row) => `
+            <tr>
+              <td>${Number(row.row || 0)}</td>
+              <td>${escapeHtml(row.title || '')}</td>
+              <td>${escapeHtml(row.platform || '')}</td>
+              <td>${escapeHtml(row.condition || '')}</td>
+              <td>${money(Number(row.price || 0))}</td>
+              <td>${row.active ? 'Yes' : 'No'}</td>
+              <td>${escapeHtml(row.status || '')}</td>
+            </tr>
+          `
+            )
+            .join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  if (importModeInput) importModeInput.value = 'upsert';
+  if (importSkipDuplicatesInput) importSkipDuplicatesInput.checked = false;
+  if (importStopOnErrorInput) importStopOnErrorInput.checked = false;
+  if (importReplaceConfirmInput) {
+    importReplaceConfirmInput.value = '';
+    importReplaceConfirmInput.classList.add('is-hidden');
+  }
+}
+
+function hideImportPreview() {
+  pendingImportCsv = '';
+  pendingImportPreview = null;
+  if (importPreviewPanel) importPreviewPanel.classList.add('is-hidden');
+  if (importPreviewSummary) importPreviewSummary.innerHTML = '';
+  if (importPreviewErrors) importPreviewErrors.innerHTML = '';
+  if (importPreviewRows) importPreviewRows.innerHTML = '';
 }
 
 async function loadAdminSettings() {
@@ -203,81 +749,11 @@ async function loadGames() {
   const res = await adminFetch(`/api/admin/games?t=${Date.now()}`, {
     cache: 'no-store',
   });
-  games = await res.json();
-
-  gamesWrap.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Title</th>
-          <th>Platform</th>
-          <th>Condition</th>
-          <th>Price</th>
-          <th>Active</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${games
-          .map(
-            (g) => `
-          <tr data-game-id="${g.id}">
-            <td><input data-field="title" data-id="${g.id}" value="${escapeHtml(g.title)}" /></td>
-            <td>${renderPlatformSelect(g.id, g.platform || '')}</td>
-            <td>CIB</td>
-            <td><input data-field="price" data-id="${g.id}" value="${escapeHtml(
-              g.price
-            )}" type="number" min="0" step="0.01" style="width: 100px" /></td>
-            <td>
-              <select data-field="active" data-id="${g.id}">
-                <option value="1" ${g.active ? 'selected' : ''}>Yes</option>
-                <option value="0" ${!g.active ? 'selected' : ''}>No</option>
-              </select>
-            </td>
-            <td class="row-actions">
-              <button class="secondary" data-action="save" data-id="${g.id}">Save</button>
-              <button class="danger" data-action="delete" data-id="${g.id}">Delete</button>
-            </td>
-          </tr>
-        `
-          )
-          .join('')}
-      </tbody>
-    </table>
-  `;
-
-  gamesWrap.querySelectorAll('button[data-action="save"]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = Number(btn.getAttribute('data-id'));
-      const payload = getRowPayload(id);
-
-      try {
-        await saveGame(id, payload);
-      } catch (err) {
-        renderNotice(err.message, 'error');
-      }
-    });
-  });
-
-  gamesWrap.querySelectorAll('button[data-action="delete"]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = Number(btn.getAttribute('data-id'));
-      if (!confirm('Delete this game from the buylist?')) return;
-      try {
-        const res = await adminFetch(`/api/admin/games/${id}`, { method: 'DELETE' });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error || 'Could not delete');
-        games = games.filter((g) => g.id !== id);
-        renderNotice('Game deleted.');
-        showToast('Saved');
-        markBuylistUpdated();
-        await loadGames();
-      } catch (err) {
-        renderNotice(err.message, 'error');
-      }
-    });
-  });
-
+  const rows = await res.json();
+  games = Array.isArray(rows) ? rows : [];
+  resetDraftsFromGames();
+  syncGameFilterOptions();
+  renderGamesTable();
 }
 
 function copyText(text, label) {
@@ -695,30 +1171,54 @@ async function loadFaqs() {
   });
 }
 
-saveAllGamesBtn.addEventListener('click', async () => {
-  try {
-    const rowEls = gamesWrap.querySelectorAll('tr[data-game-id]');
-    let changed = 0;
-    for (const row of rowEls) {
-      const id = Number(row.getAttribute('data-game-id'));
-      if (!Number.isInteger(id)) continue;
-      const existing = getGameById(id);
-      const payload = getRowPayload(id);
-      if (!isRowChanged(existing, payload)) continue;
-      await saveGame(id, payload, true);
-      changed += 1;
-    }
+function gameFilterQueryString() {
+  readGameFiltersFromInputs();
+  const params = new URLSearchParams();
+  if (gameFilters.search) params.set('search', gameFilters.search);
+  if (gameFilters.platform !== 'all') params.set('platform', gameFilters.platform);
+  if (gameFilters.condition !== 'all') params.set('condition', gameFilters.condition);
+  if (gameFilters.active !== 'all') params.set('active', gameFilters.active);
+  if (gameFilters.minPrice) params.set('minPrice', gameFilters.minPrice);
+  if (gameFilters.maxPrice) params.set('maxPrice', gameFilters.maxPrice);
+  return params.toString();
+}
 
-    if (changed === 0) {
-      renderNotice('No pending edits to save.');
-      return;
+function loadQuickAddDefaults() {
+  const savedPlatform = localStorage.getItem(LAST_PLATFORM_KEY);
+  const savedCondition = localStorage.getItem(LAST_CONDITION_KEY);
+  if (savedPlatform && addPlatformInput) addPlatformInput.value = savedPlatform;
+  if (savedCondition && addConditionInput) {
+    const hasCondition = Array.from(addConditionInput.options).some((opt) => opt.value === savedCondition);
+    if (!hasCondition) {
+      const opt = document.createElement('option');
+      opt.value = savedCondition;
+      opt.textContent = savedCondition;
+      addConditionInput.appendChild(opt);
     }
-    renderNotice(`Saved ${changed} game${changed === 1 ? '' : 's'}.`);
-    showToast('Saved');
-    await loadGames();
-  } catch (err) {
-    renderNotice(err.message, 'error');
+    addConditionInput.value = savedCondition;
   }
+}
+
+function updateImportReplaceConfirmVisibility() {
+  if (!importModeInput || !importReplaceConfirmInput) return;
+  const isReplace = importModeInput.value === 'replace';
+  importReplaceConfirmInput.classList.toggle('is-hidden', !isReplace);
+}
+
+saveAllGamesBtn.addEventListener('click', () => {
+  saveDirtyChanges().catch((err) => renderNotice(err.message, 'error'));
+});
+
+if (saveChangesBtn) {
+  saveChangesBtn.addEventListener('click', () => {
+    saveDirtyChanges().catch((err) => renderNotice(err.message, 'error'));
+  });
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if (getDirtyCount() === 0) return;
+  e.preventDefault();
+  e.returnValue = '';
 });
 
 async function bootstrapAdmin() {
@@ -727,6 +1227,10 @@ async function bootstrapAdmin() {
     await loadSubmissions(1);
     await loadFaqs();
     await loadAdminSettings();
+    loadQuickAddDefaults();
+    clearGameFilters();
+    renderGamesTable();
+    updateImportReplaceConfirmVisibility();
     adminApp.style.display = 'block';
     renderNotice('Connected.');
   } catch (err) {
@@ -756,11 +1260,15 @@ saveBuylistVersionBtn.addEventListener('click', async () => {
 addGameForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
+    const title = String(addTitleInput.value || '').trim();
+    const platform = String(addPlatformInput.value || '').trim();
+    const condition = normalizeConditionValue(addConditionInput.value);
     const payload = {
-      title: document.getElementById('title').value,
-      platform: document.getElementById('platform').value,
-      price: Number(document.getElementById('price').value),
-      active: document.getElementById('active').value === '1',
+      title,
+      platform,
+      condition,
+      price: Number(addPriceInput.value),
+      active: addActiveInput.value === '1',
     };
 
     const res = await adminFetch('/api/admin/games', {
@@ -770,9 +1278,13 @@ addGameForm.addEventListener('submit', async (e) => {
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Could not add game');
 
-    addGameForm.reset();
+    localStorage.setItem(LAST_PLATFORM_KEY, platform);
+    localStorage.setItem(LAST_CONDITION_KEY, condition);
+    addTitleInput.value = '';
+    addPriceInput.value = '';
+    addTitleInput.focus();
     renderNotice('Game added.');
-    showToast('Saved');
+    showToast(`Added: ${title} (${platform || 'No Platform'})`);
     await loadGames();
     markBuylistUpdated();
   } catch (err) {
@@ -781,6 +1293,7 @@ addGameForm.addEventListener('submit', async (e) => {
 });
 
 refreshGamesBtn.addEventListener('click', async () => {
+  if (getDirtyCount() > 0 && !confirm('You have unsaved changes. Refresh and discard them?')) return;
   try {
     await loadGames();
     await loadSubmissions(submissionsState.page);
@@ -801,27 +1314,193 @@ exportCsvBtn.addEventListener('click', async () => {
   }
 });
 
+if (exportFilteredCsvBtn) {
+  exportFilteredCsvBtn.addEventListener('click', async () => {
+    try {
+      const query = gameFilterQueryString();
+      const url = query ? `/api/admin/games/export-csv?${query}` : '/api/admin/games/export-csv';
+      await downloadAdminCsv(url, 'buylist-filtered.csv');
+      showToast('Exported');
+    } catch (err) {
+      renderNotice(err.message, 'error');
+    }
+  });
+}
+
 importCsvInput.addEventListener('change', async () => {
   const file = importCsvInput.files && importCsvInput.files[0];
   if (!file) return;
   try {
     const csv = await file.text();
-    const res = await adminFetch('/api/admin/games/import-csv', {
+    const res = await adminFetch('/api/admin/games/import-preview', {
       method: 'POST',
       body: JSON.stringify({ csv }),
     });
     const body = await res.json();
-    if (!res.ok) throw new Error(body.error || 'CSV import failed');
-    renderNotice(`Imported ${body.imported} rows.`);
-    showToast('Saved');
-    await loadGames();
-    markBuylistUpdated();
+    if (!res.ok) throw new Error(body.error || 'Could not preview CSV');
+    renderImportPreview(body, csv);
+    renderNotice('Import preview ready.');
   } catch (err) {
     renderNotice(err.message, 'error');
   } finally {
     importCsvInput.value = '';
   }
 });
+
+if (importModeInput) {
+  importModeInput.addEventListener('change', updateImportReplaceConfirmVisibility);
+}
+
+if (cancelImportBtn) {
+  cancelImportBtn.addEventListener('click', () => {
+    hideImportPreview();
+    renderNotice('Import canceled.', 'warn');
+  });
+}
+
+if (commitImportBtn) {
+  commitImportBtn.addEventListener('click', async () => {
+    if (!pendingImportCsv || !pendingImportPreview) {
+      renderNotice('Upload a CSV first to preview import.', 'warn');
+      return;
+    }
+    const mode = importModeInput ? importModeInput.value : 'upsert';
+    const replaceConfirm = importReplaceConfirmInput ? importReplaceConfirmInput.value.trim() : '';
+    if (mode === 'replace' && replaceConfirm !== 'REPLACE') {
+      renderNotice('Type REPLACE to confirm full replace import.', 'error');
+      return;
+    }
+
+    try {
+      const res = await adminFetch('/api/admin/games/import-commit', {
+        method: 'POST',
+        body: JSON.stringify({
+          csv: pendingImportCsv,
+          mode,
+          skipDuplicates: Boolean(importSkipDuplicatesInput && importSkipDuplicatesInput.checked),
+          stopOnError: Boolean(importStopOnErrorInput && importStopOnErrorInput.checked),
+          replaceConfirm,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Import failed');
+      hideImportPreview();
+      await loadGames();
+      markBuylistUpdated();
+      renderNotice(
+        `Import complete. Added ${Number(body.inserted || 0)}, updated ${Number(body.updated || 0)}, skipped ${Number(
+          body.skipped || 0
+        )}, errors ${Number(body.errors || 0)}.`
+      );
+      showToast('Saved');
+    } catch (err) {
+      renderNotice(err.message, 'error');
+    }
+  });
+}
+
+function bindGameFilterEvents() {
+  const bindings = [
+    [gamesSearchInput, 'input'],
+    [gamesFilterPlatformInput, 'change'],
+    [gamesFilterConditionInput, 'change'],
+    [gamesFilterActiveInput, 'change'],
+    [gamesFilterPriceMinInput, 'input'],
+    [gamesFilterPriceMaxInput, 'input'],
+  ];
+  for (const [el, eventName] of bindings) {
+    if (!el) continue;
+    el.addEventListener(eventName, () => {
+      renderGamesTable();
+    });
+  }
+  if (clearGameFiltersBtn) {
+    clearGameFiltersBtn.addEventListener('click', () => {
+      clearGameFilters();
+      renderGamesTable();
+    });
+  }
+}
+
+bindGameFilterEvents();
+
+if (applyBulkActiveBtn) {
+  applyBulkActiveBtn.addEventListener('click', () => {
+    if (!bulkSetActiveInput || bulkSetActiveInput.value === '') {
+      renderNotice('Choose Active Yes/No for bulk update.', 'warn');
+      return;
+    }
+    applyBulkUpdate((draft) => {
+      draft.active = bulkSetActiveInput.value === '1';
+    }, 'Bulk Active updated');
+  });
+}
+
+if (applyBulkConditionBtn) {
+  applyBulkConditionBtn.addEventListener('click', () => {
+    const rawCondition = String(bulkSetConditionInput?.value || '').trim();
+    if (!rawCondition) {
+      renderNotice('Choose a condition for bulk update.', 'warn');
+      return;
+    }
+    const nextCondition = normalizeConditionValue(rawCondition);
+    applyBulkUpdate((draft) => {
+      draft.condition_note = nextCondition;
+    }, 'Bulk Condition updated');
+  });
+}
+
+if (applyBulkPriceAdjustBtn) {
+  applyBulkPriceAdjustBtn.addEventListener('click', () => {
+    const amount = Number(bulkPriceValueInput?.value || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      renderNotice('Enter a valid bulk price adjustment value.', 'warn');
+      return;
+    }
+    const mode = bulkPriceModeInput?.value === 'percent' ? 'percent' : 'amount';
+    const direction = bulkPriceDirectionInput?.value === 'decrease' ? -1 : 1;
+    applyBulkUpdate((draft) => {
+      const current = Number(draft.price || 0);
+      if (mode === 'percent') {
+        const multiplier = 1 + direction * (amount / 100);
+        draft.price = Math.max(0, Number((current * multiplier).toFixed(2)));
+      } else {
+        draft.price = Math.max(0, Number((current + direction * amount).toFixed(2)));
+      }
+    }, 'Bulk price adjusted');
+  });
+}
+
+if (bulkRound99Btn) {
+  bulkRound99Btn.addEventListener('click', () => {
+    applyBulkUpdate((draft) => {
+      const base = Math.max(0, Math.floor(Number(draft.price || 0)));
+      draft.price = Number((base + 0.99).toFixed(2));
+    }, 'Bulk rounded to .99');
+  });
+}
+
+if (bulkRoundDollarBtn) {
+  bulkRoundDollarBtn.addEventListener('click', () => {
+    applyBulkUpdate((draft) => {
+      draft.price = Math.max(0, Math.round(Number(draft.price || 0)));
+    }, 'Bulk rounded to dollar');
+  });
+}
+
+if (bulkDeleteSelectedBtn) {
+  bulkDeleteSelectedBtn.addEventListener('click', () => {
+    const selected = getSelectedDrafts();
+    if (!confirmBulkUpdate(selected.length)) return;
+    if (!confirm(`Delete ${selected.length} selected rows on next Save Changes?`)) return;
+    for (const draft of selected) {
+      draft.deleted = true;
+      selectedGameIds.delete(draft.id);
+    }
+    renderGamesTable();
+    showToast('Bulk delete queued');
+  });
+}
 
 addFaqForm.addEventListener('submit', async (e) => {
   e.preventDefault();
