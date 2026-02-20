@@ -66,6 +66,12 @@ function asMoney(price) {
   return `$${Number(price).toFixed(2)}`;
 }
 
+function formatSignedMoneyFromCents(cents) {
+  const amount = Number(cents || 0);
+  const abs = Math.abs(amount / 100).toFixed(2);
+  return `${amount >= 0 ? '+' : '-'}$${abs}`;
+}
+
 function computeGamesSignature(items) {
   return items
     .map(
@@ -82,6 +88,8 @@ function priceDeltaMeta(game) {
   const previousCents = Number(game?.previous_price_cents);
   const hasPrevious = Number.isFinite(previousCents);
   const currentCents = Math.round(Number(game?.price || 0) * 100);
+  const changeCents = hasPrevious ? currentCents - previousCents : null;
+  const changePercent = hasPrevious && previousCents > 0 ? Number(((changeCents / previousCents) * 100).toFixed(1)) : null;
   let direction = String(game?.price_change_direction || '').toLowerCase();
   if (direction !== 'up' && direction !== 'down' && direction !== 'same' && direction !== 'new') {
     if (hasPrevious) {
@@ -99,6 +107,9 @@ function priceDeltaMeta(game) {
       className: 'up',
       extra: '<span class="price-delta-arrow">▲</span>',
       tooltip: hasPrevious ? `Was ${asMoney(previousCents / 100)}${baselineSuffix}` : '',
+      deltaLine: `${formatSignedMoneyFromCents(changeCents)}${
+        changePercent === null ? '' : ` (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(1)}%)`
+      }`,
     };
   }
   if (direction === 'down') {
@@ -106,6 +117,9 @@ function priceDeltaMeta(game) {
       className: 'down',
       extra: '<span class="price-delta-arrow">▼</span>',
       tooltip: hasPrevious ? `Was ${asMoney(previousCents / 100)}${baselineSuffix}` : '',
+      deltaLine: `${formatSignedMoneyFromCents(changeCents)}${
+        changePercent === null ? '' : ` (${changePercent.toFixed(1)}%)`
+      }`,
     };
   }
   if (direction === 'new') {
@@ -113,6 +127,7 @@ function priceDeltaMeta(game) {
       className: 'new',
       extra: '<span class="price-delta-tag">New</span>',
       tooltip: baselineVersion ? `New this version (vs ${baselineVersion})` : 'New this version',
+      deltaLine: 'New this version',
     };
   }
 
@@ -120,13 +135,18 @@ function priceDeltaMeta(game) {
     className: '',
     extra: '',
     tooltip: hasPrevious && baselineVersion ? `Same as ${asMoney(previousCents / 100)}${baselineSuffix}` : '',
+    deltaLine: hasPrevious && baselineVersion ? 'No change' : '',
   };
 }
 
 function renderPriceWithDelta(game, meta = priceDeltaMeta(game)) {
   const titleAttr = meta.tooltip ? ` title="${escapeHtml(meta.tooltip)}"` : '';
   const className = meta.className ? `price-cell-value ${meta.className}` : 'price-cell-value';
-  return `<span class="${className}"${titleAttr}>${asMoney(game.price)}${meta.extra}</span>`;
+  const noteClass = meta.className ? meta.className : 'same';
+  const note = meta.deltaLine
+    ? `<span class="price-delta-note ${noteClass}"${titleAttr}>${escapeHtml(meta.deltaLine)}</span>`
+    : '';
+  return `<span class="price-cell-stack"><span class="${className}"${titleAttr}>${asMoney(game.price)}${meta.extra}</span>${note}</span>`;
 }
 
 function renderTitleWithDelta(game, meta = priceDeltaMeta(game)) {
@@ -673,7 +693,7 @@ async function loadGames() {
 
   const r = await fetch(`/api/games?t=${Date.now()}`, { cache: 'no-store' });
   const nextGames = await r.json();
-  if (shouldPreferSnapshot(snapshot, nextGames)) return;
+  // Always reconcile with server truth so admin price edits reflect immediately on seller pages.
   applyGames(nextGames);
 }
 

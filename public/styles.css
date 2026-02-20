@@ -1021,6 +1021,19 @@ input[type='checkbox'] {
   white-space: nowrap;
 }
 
+.price-cell-stack {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  align-items: flex-start;
+}
+
+.price-delta-note {
+  font-size: 0.66rem;
+  line-height: 1.15;
+  opacity: 0.95;
+}
+
 .price-cell-value.up {
   color: #89ffd0;
 }
@@ -1031,6 +1044,22 @@ input[type='checkbox'] {
 
 .price-cell-value.new {
   color: #cde8ff;
+}
+
+.price-delta-note.up {
+  color: #89ffd0;
+}
+
+.price-delta-note.down {
+  color: #ffb1bf;
+}
+
+.price-delta-note.new {
+  color: #cde8ff;
+}
+
+.price-delta-note.same {
+  color: #d7e4ff;
 }
 
 .price-delta-arrow {
