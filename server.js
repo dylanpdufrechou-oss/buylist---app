@@ -391,7 +391,16 @@ async function getSnapshotVersionMetadata(currentBuylistVersion) {
      LIMIT 1`
   );
 
-  let baseline = await db.get(
+  const sameVersion = await db.get(
+    `SELECT id, version, published_at, item_count
+     FROM buylist_snapshots
+     WHERE version = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [currentBuylistVersion]
+  );
+
+  const previousVersion = await db.get(
     `SELECT id, version, published_at, item_count
      FROM buylist_snapshots
      WHERE version < ?
@@ -400,11 +409,10 @@ async function getSnapshotVersionMetadata(currentBuylistVersion) {
     [currentBuylistVersion]
   );
 
-  // Fallback: if no prior-month snapshot exists yet, compare to the latest
-  // published snapshot for the same version so in-month edits still show buffs/nerfs.
-  if (!baseline && lastPublished && safeString(lastPublished.version) === safeString(currentBuylistVersion)) {
-    baseline = lastPublished;
-  }
+  // Compare against the most relevant published baseline:
+  // 1) latest snapshot for the current version (if present)
+  // 2) otherwise latest published snapshot from a prior version
+  const baseline = sameVersion || previousVersion || null;
 
   return {
     lastPublished: lastPublished || null,
