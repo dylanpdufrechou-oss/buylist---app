@@ -1591,25 +1591,46 @@ a {
 }
 
 @media (max-width: 640px) {
+  .buylist-table-wrap {
+    overflow-x: hidden;
+  }
+
   .buylist-table-wrap .sheet-table {
     table-layout: fixed;
     width: 100%;
   }
 
+  .buylist-table-wrap .sheet-table th,
+  .buylist-table-wrap .sheet-table td {
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  /* Keep mobile columns separated so price never bleeds into QTY */
+  .buylist-table-wrap .sheet-table th:nth-child(1),
+  .buylist-table-wrap .sheet-table td:nth-child(1) {
+    width: 40%;
+  }
+
+  .buylist-table-wrap .sheet-table th:nth-child(2),
+  .buylist-table-wrap .sheet-table td:nth-child(2) {
+    width: 11%;
+  }
+
+  .buylist-table-wrap .sheet-table th:nth-child(3),
+  .buylist-table-wrap .sheet-table td:nth-child(3) {
+    width: 19%;
+    white-space: nowrap;
+  }
+
   .buylist-table-wrap .sheet-table th:nth-child(4),
   .buylist-table-wrap .sheet-table td:nth-child(4) {
-    width: 76px;
-    min-width: 76px;
-    max-width: 76px;
-    overflow: hidden;
+    width: 14%;
   }
 
   .buylist-table-wrap .sheet-table th:nth-child(5),
   .buylist-table-wrap .sheet-table td:nth-child(5) {
-    width: 88px;
-    min-width: 88px;
-    max-width: 88px;
-    overflow: hidden;
+    width: 16%;
   }
 
   .buylist-table-wrap .qty-cell {
@@ -1637,6 +1658,23 @@ a {
     padding: 0.2rem 0.3rem;
     font-size: 0.73rem;
     box-sizing: border-box;
+  }
+
+  /* Keep payout value and delta text inside the price cell */
+  .buylist-table-wrap .sheet-table td:nth-child(3) .price-cell-stack {
+    display: block;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .buylist-table-wrap .sheet-table td:nth-child(3) .price-cell-value,
+  .buylist-table-wrap .sheet-table td:nth-child(3) .price-delta-note {
+    display: block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .sticky-payout {
