@@ -82,7 +82,19 @@ const selectedGameIds = new Set();
 let pendingImportCsv = '';
 let pendingImportPreview = null;
 let faqs = [];
-const platformOptions = ['Wii', 'PS3', 'PS2', 'OG Xbox', 'Xbox 360', 'Wii U', '3DS', 'DS'];
+const platformOptions = [
+  'Wii',
+  'PS3',
+  'PS2',
+  'PS4',
+  'OG Xbox',
+  'Xbox 360',
+  'Xbox One',
+  'Wii U',
+  'Nintendo Switch',
+  '3DS',
+  'DS',
+];
 const BUYLIST_UPDATED_EVENT = 'buylistUpdatedAt';
 const BUYLIST_SNAPSHOT_EVENT = 'buylistSnapshot';
 const LAST_PLATFORM_KEY = 'adminLastPlatform';

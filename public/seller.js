@@ -30,7 +30,19 @@ const MIN_TABLE_HEIGHT = 300;
 
 let games = [];
 const qtyMap = new Map();
-const platformTabs = ['Wii', 'PS3', 'PS2', 'OG Xbox', 'Xbox 360', 'Wii U', '3DS', 'DS'];
+const platformTabs = [
+  'Wii',
+  'PS3',
+  'PS2',
+  'PS4',
+  'OG Xbox',
+  'Xbox 360',
+  'Xbox One',
+  'Wii U',
+  'Nintendo Switch',
+  '3DS',
+  'DS',
+];
 let activePlatformTab = platformTabs[0] || '';
 let gamesSignature = '';
 let localSnapshotUpdatedAt = 0;
@@ -218,10 +230,17 @@ function matchesPlatformTab(game, tab) {
   if (tab === 'Wii') return platform.includes('wii') && !platform.includes('wii u');
   if (tab === 'PS3') return platform.includes('ps3') || platform.includes('playstation 3');
   if (tab === 'PS2') return platform.includes('ps2') || platform.includes('playstation 2');
+  if (tab === 'PS4') return platform.includes('ps4') || platform.includes('playstation 4') || platform.includes('playstation4');
   if (tab === 'OG Xbox') {
     return platform === 'xbox' || platform.includes('og xbox') || platform.includes('original xbox');
   }
   if (tab === 'Xbox 360') return platform.includes('xbox 360') || platform.includes('360');
+  if (tab === 'Xbox One') {
+    return platform.includes('xbox one') || platform.includes('xboxone') || platform.includes('xbox 1');
+  }
+  if (tab === 'Nintendo Switch') {
+    return platform.includes('nintendo switch') || platform === 'switch' || platform.startsWith('switch ');
+  }
   if (tab === '3DS') return platform.includes('3ds');
   if (tab === 'DS') return platform.includes('ds') && !platform.includes('3ds');
   return false;
