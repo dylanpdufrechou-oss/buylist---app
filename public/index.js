@@ -102,11 +102,18 @@ function priceDeltaMeta(game) {
   };
 }
 
-function renderPriceWithDelta(game) {
-  const meta = priceDeltaMeta(game);
+function renderPriceWithDelta(game, meta = priceDeltaMeta(game)) {
   const titleAttr = meta.tooltip ? ` title="${escapeHtml(meta.tooltip)}"` : '';
   const className = meta.className ? `price-cell-value ${meta.className}` : 'price-cell-value';
   return `<span class="${className}"${titleAttr}>${asMoney(game.price)}${meta.extra}</span>`;
+}
+
+function renderTitleWithDelta(game, meta = priceDeltaMeta(game)) {
+  const arrow = meta.className === 'up' ? '▲' : meta.className === 'down' ? '▼' : '';
+  const className = meta.className ? `title-cell-value ${meta.className}` : 'title-cell-value';
+  return `<span class="${className}">${escapeHtml(game.title || '')}${
+    arrow ? `<span class="title-delta-arrow">${arrow}</span>` : ''
+  }</span>`;
 }
 
 function applyGames(nextGames) {
@@ -449,12 +456,14 @@ function renderTable() {
       </thead>
       <tbody>
         ${filtered
-          .map(
-            (g) => `
-          <tr>
-            <td>${escapeHtml(g.title)}</td>
+          .map((g) => {
+            const deltaMeta = priceDeltaMeta(g);
+            const rowClass = deltaMeta.className ? `delta-${deltaMeta.className}` : '';
+            return `
+          <tr class="${rowClass}">
+            <td class="game-title-cell" title="${escapeHtml(g.title)}">${renderTitleWithDelta(g, deltaMeta)}</td>
             <td>CIB</td>
-            <td>${renderPriceWithDelta(g)}</td>
+            <td>${renderPriceWithDelta(g, deltaMeta)}</td>
             <td>
               <input
                 type="number"
@@ -465,8 +474,8 @@ function renderTable() {
                 style="width: 88px"
               />
             </td>
-          </tr>`
-          )
+          </tr>`;
+          })
           .join('')}
       </tbody>
     </table>
