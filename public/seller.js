@@ -16,11 +16,6 @@ const tableMeta = document.getElementById('tableMeta');
 const faqListWrap = document.getElementById('faqList');
 const stepProgress = document.getElementById('stepProgress');
 const shipmentJumpLinks = document.querySelectorAll('[data-shipment-jump]');
-const marketFootnote = document.getElementById('marketFootnote');
-const marketModal = document.getElementById('marketModal');
-const closeMarketModalBtn = document.getElementById('closeMarketModal');
-const marketModalMeta = document.getElementById('marketModalMeta');
-const marketChartWrap = document.getElementById('marketChartWrap');
 
 const BUYLIST_UPDATED_EVENT = 'buylistUpdatedAt';
 const BUYLIST_SNAPSHOT_EVENT = 'buylistSnapshot';
@@ -28,7 +23,6 @@ const AUTO_REFRESH_MS = 15000;
 const SNAPSHOT_GRACE_MS = 5 * 60 * 1000;
 const PRICING_LOCK_QUESTION = 'When is pricing locked in?';
 const PRICING_LOCK_ANSWER = 'Pricing is locked in once your shipment is submitted.';
-const MARKET_HISTORY_DAYS = 90;
 
 let games = [];
 const qtyMap = new Map();
@@ -38,11 +32,6 @@ let gamesSignature = '';
 let localSnapshotUpdatedAt = 0;
 let hasSubmittedShipment = false;
 let mobileSubmitToastTimer = 0;
-let publicSettings = {
-  show_market_prices_public: false,
-  show_percent_of_market: true,
-  market_badge_threshold: 70,
-};
 
 function escapeHtml(str) {
   return String(str || '')
@@ -57,19 +46,8 @@ function asMoney(price) {
   return `$${Number(price).toFixed(2)}`;
 }
 
-function asPercent(value) {
-  return `${Number(value).toFixed(1)}%`;
-}
-
 function computeGamesSignature(items) {
-  return items
-    .map(
-      (g) =>
-        `${g.id}|${g.title}|${g.platform || ''}|${g.price}|${g.active ? 1 : 0}|${g.pricecharting_product_id || ''}|${
-          g.market_last_checked_at || ''
-        }|${g.market_offer_percent || ''}|${g.market_cib_price || ''}|${g.market_item_url || ''}`
-    )
-    .join('~');
+  return items.map((g) => `${g.id}|${g.title}|${g.platform || ''}|${g.price}|${g.active ? 1 : 0}`).join('~');
 }
 
 function applyGames(nextGames) {
@@ -404,179 +382,6 @@ function renderSelectedItems() {
   });
 }
 
-function shouldShowMarketColumn() {
-  return Boolean(publicSettings.show_market_prices_public || publicSettings.show_percent_of_market);
-}
-
-function renderMarketFootnote(filteredGames, showMarketColumn) {
-  if (!marketFootnote) return;
-
-  if (!showMarketColumn) {
-    marketFootnote.classList.add('is-hidden');
-    marketFootnote.innerHTML = '';
-    return;
-  }
-
-  const hasAnyMarket = filteredGames.some(
-    (g) => Number.isFinite(Number(g.market_offer_percent)) || g.market_item_url || g.pricecharting_product_id
-  );
-  if (!hasAnyMarket) {
-    marketFootnote.classList.add('is-hidden');
-    marketFootnote.innerHTML = '';
-    return;
-  }
-
-  marketFootnote.classList.remove('is-hidden');
-  marketFootnote.innerHTML =
-    'Market data sourced from <a href="https://www.pricecharting.com" target="_blank" rel="noopener">PriceCharting</a>. Updated daily.';
-}
-
-function renderMarketCell(game) {
-  const offerPercent = Number(game.market_offer_percent);
-  const hasPercent = Number.isFinite(offerPercent);
-  const showRaw = Boolean(publicSettings.show_market_prices_public);
-  const showPercent = Boolean(publicSettings.show_percent_of_market);
-  const threshold = Number(publicSettings.market_badge_threshold || 70);
-
-  const details = [];
-  if (showRaw && game.market_cib_price) {
-    details.push(`<div><strong>Market (CIB):</strong> ${asMoney(game.market_cib_price)}</div>`);
-    details.push(`<div><strong>We Pay:</strong> ${asMoney(game.price)}</div>`);
-  }
-
-  if (showPercent && hasPercent) {
-    if (showRaw) {
-      details.push(`<div><strong>% of Market:</strong> ${asPercent(offerPercent)}</div>`);
-    } else {
-      const band = escapeHtml(game.market_payout_band || 'Payout vs market');
-      details.push(`<div><strong>Payout vs Market:</strong> ${band}</div>`);
-    }
-  }
-
-  if (!showRaw && !showPercent) {
-    return '<span class="muted">Market view disabled</span>';
-  }
-
-  const badges = [];
-  if (hasPercent && offerPercent >= threshold) {
-    badges.push('<span class="market-badge">Paying Well</span>');
-  }
-
-  const actions = [];
-  if (showRaw && game.pricecharting_product_id) {
-    actions.push(
-      `<button type="button" class="secondary trend-btn" data-game-id="${game.id}" title="View market trend">Trend</button>`
-    );
-  }
-  if (game.market_item_url) {
-    actions.push(
-      `<a class="secondary market-link" href="${escapeHtml(
-        game.market_item_url
-      )}" target="_blank" rel="noopener">View Item</a>`
-    );
-  }
-
-  if (details.length === 0 && actions.length === 0) {
-    return '<span class="muted">Market data unavailable</span>';
-  }
-
-  return `
-    <div class="market-cell">
-      ${details.join('')}
-      ${badges.length ? `<div class="market-badge-row">${badges.join('')}</div>` : ''}
-      ${actions.length ? `<div class="market-actions">${actions.join('')}</div>` : ''}
-    </div>
-  `;
-}
-
-async function openMarketTrend(gameId) {
-  if (!marketModal || !marketChartWrap || !marketModalMeta) return;
-
-  const game = games.find((item) => item.id === gameId);
-  if (!game) return;
-
-  marketModal.classList.remove('is-hidden');
-  document.body.classList.add('modal-open');
-  marketModalMeta.textContent = `${game.title} (${game.platform || 'Unknown'})`;
-  marketChartWrap.innerHTML = '<p class="muted">Loading market history...</p>';
-
-  try {
-    const response = await fetch(`/api/market/history?gameId=${gameId}&days=${MARKET_HISTORY_DAYS}`);
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error || 'Could not load market history.');
-
-    const points = Array.isArray(body.points) ? body.points : [];
-    const numericPoints = points
-      .filter((point) => Number.isFinite(Number(point.cib_price_cents)))
-      .map((point) => ({
-        capturedAt: point.captured_at,
-        cents: Number(point.cib_price_cents),
-      }));
-
-    const lastUpdated = body.game?.market_last_checked_at || 'Unknown';
-    const itemLink = body.game?.market_item_url;
-
-    marketModalMeta.innerHTML = `Last updated: ${escapeHtml(lastUpdated)}${
-      itemLink
-        ? ` | <a href="${escapeHtml(itemLink)}" target="_blank" rel="noopener">PriceCharting item page</a>`
-        : ''
-    }`;
-
-    if (numericPoints.length < 2) {
-      marketChartWrap.innerHTML =
-        '<p class="muted">Not enough history points yet. Trend chart appears after more daily snapshots.</p>';
-      return;
-    }
-
-    const minY = Math.min(...numericPoints.map((p) => p.cents));
-    const maxY = Math.max(...numericPoints.map((p) => p.cents));
-    const rangeY = Math.max(1, maxY - minY);
-    const width = 640;
-    const height = 220;
-    const padX = 20;
-    const padY = 18;
-
-    const coords = numericPoints.map((point, index) => {
-      const x = padX + (index / (numericPoints.length - 1)) * (width - padX * 2);
-      const y = height - padY - ((point.cents - minY) / rangeY) * (height - padY * 2);
-      return { x, y, point };
-    });
-
-    const polyline = coords.map((c) => `${c.x.toFixed(2)},${c.y.toFixed(2)}`).join(' ');
-    const firstPoint = numericPoints[0];
-    const lastPoint = numericPoints[numericPoints.length - 1];
-
-    marketChartWrap.innerHTML = `
-      <div class="market-chart-shell">
-        <svg viewBox="0 0 ${width} ${height}" class="market-chart" role="img" aria-label="Market CIB price trend">
-          <rect x="0" y="0" width="${width}" height="${height}" fill="rgba(10, 18, 46, 0.85)" rx="10" />
-          <polyline fill="none" stroke="#19f0ff" stroke-width="3" points="${polyline}" />
-          ${coords
-            .slice(-1)
-            .map(
-              (c) =>
-                `<circle cx="${c.x.toFixed(2)}" cy="${c.y.toFixed(2)}" r="4" fill="#ffe45b" stroke="#111736" stroke-width="1" />`
-            )
-            .join('')}
-        </svg>
-        <div class="market-chart-meta">
-          <span>Start: ${asMoney((firstPoint.cents / 100).toFixed(2))}</span>
-          <span>Now: ${asMoney((lastPoint.cents / 100).toFixed(2))}</span>
-          <span>Points: ${numericPoints.length}</span>
-        </div>
-      </div>
-    `;
-  } catch (err) {
-    marketChartWrap.innerHTML = `<p class="notice error">${escapeHtml(err.message || 'Could not load market trend.')}</p>`;
-  }
-}
-
-function closeMarketModal() {
-  if (!marketModal) return;
-  marketModal.classList.add('is-hidden');
-  document.body.classList.remove('modal-open');
-}
-
 function renderTable() {
   if (!activePlatformTab && platformTabs.length > 0) {
     activePlatformTab = platformTabs[0];
@@ -592,9 +397,6 @@ function renderTable() {
   const filtered = getFilteredGames();
   tableMeta.textContent = `${activePlatformTab} Buylist`;
 
-  const showMarketColumn = shouldShowMarketColumn();
-  renderMarketFootnote(filtered, showMarketColumn);
-
   if (filtered.length === 0) {
     buylistWrap.innerHTML = `<p class="muted">No matching games found for ${escapeHtml(activePlatformTab)}.</p>`;
     updateTotal();
@@ -609,7 +411,6 @@ function renderTable() {
           <th>Title</th>
           <th>Condition</th>
           <th>You Get Paid</th>
-          ${showMarketColumn ? '<th>Market</th>' : ''}
           <th>Qty</th>
           <th>Add</th>
         </tr>
@@ -622,7 +423,6 @@ function renderTable() {
             <td>${escapeHtml(g.title)}</td>
             <td>CIB</td>
             <td>${asMoney(g.price)}</td>
-            ${showMarketColumn ? `<td>${renderMarketCell(g)}</td>` : ''}
             <td>
               <div class="qty-cell">
                 <input
@@ -656,30 +456,8 @@ function renderTable() {
     });
   });
 
-  buylistWrap.querySelectorAll('button.trend-btn[data-game-id]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const gameId = Number(btn.getAttribute('data-game-id'));
-      if (Number.isInteger(gameId)) openMarketTrend(gameId);
-    });
-  });
-
   updateTotal();
   renderSelectedItems();
-}
-
-async function loadPublicSettings() {
-  try {
-    const r = await fetch(`/api/settings/public?t=${Date.now()}`, { cache: 'no-store' });
-    if (!r.ok) return;
-    const body = await r.json();
-    publicSettings = {
-      show_market_prices_public: Boolean(body.show_market_prices_public),
-      show_percent_of_market: body.show_percent_of_market !== false,
-      market_badge_threshold: Number(body.market_badge_threshold || 70),
-    };
-  } catch {
-    // Keep defaults if settings cannot load.
-  }
 }
 
 async function loadGames() {
@@ -805,24 +583,10 @@ form.addEventListener('submit', async (e) => {
   renderMessage(`Shipment ${body.shipment.id} submitted. Print and include the packing slip in your box.`);
 });
 
-if (closeMarketModalBtn) {
-  closeMarketModalBtn.addEventListener('click', closeMarketModal);
-}
-
-if (marketModal) {
-  marketModal.addEventListener('click', (e) => {
-    if (e.target === marketModal) closeMarketModal();
-  });
-}
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeMarketModal();
-});
-
 updateTotal();
 renderSelectedItems();
 
-Promise.all([loadPublicSettings(), loadGames()])
+loadGames()
   .then(() => {
     renderTable();
   })
@@ -847,16 +611,16 @@ window.addEventListener('storage', (e) => {
         applyGames(snapshot.games);
       }
     }
-    Promise.all([loadPublicSettings(), loadGames()]).catch(() => {});
+    loadGames().catch(() => {});
   }
 });
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
-    Promise.all([loadPublicSettings(), loadGames(), loadFaqs()]).catch(() => {});
+    Promise.all([loadGames(), loadFaqs()]).catch(() => {});
   }
 });
 
 setInterval(() => {
-  Promise.all([loadPublicSettings(), loadGames(), loadFaqs()]).catch(() => {});
+  Promise.all([loadGames(), loadFaqs()]).catch(() => {});
 }, AUTO_REFRESH_MS);

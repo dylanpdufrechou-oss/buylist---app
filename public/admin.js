@@ -16,19 +16,6 @@ const importCsvInput = document.getElementById('importCsv');
 const addFaqForm = document.getElementById('addFaqForm');
 const faqWrap = document.getElementById('faqWrap');
 
-const addProductIdInput = document.getElementById('pricechartingProductId');
-const searchMarketAddBtn = document.getElementById('searchMarketAdd');
-const validateMarketAddBtn = document.getElementById('validateMarketAdd');
-const addMarketResults = document.getElementById('addMarketResults');
-const rowMarketResults = document.getElementById('rowMarketResults');
-
-const marketSettingsForm = document.getElementById('marketSettingsForm');
-const showMarketPricesPublicInput = document.getElementById('showMarketPricesPublic');
-const showPercentOfMarketInput = document.getElementById('showPercentOfMarket');
-const marketUpdateFrequencyInput = document.getElementById('marketUpdateFrequencyHours');
-const runMarketSyncNowBtn = document.getElementById('runMarketSyncNow');
-const marketSettingsMessage = document.getElementById('marketSettingsMessage');
-
 const submissionsStatusFilterInput = document.getElementById('submissionsStatusFilter');
 const submissionsSearchInput = document.getElementById('submissionsSearch');
 const submissionsSortInput = document.getElementById('submissionsSort');
@@ -76,13 +63,6 @@ function renderNotice(text, type = 'ok') {
     return;
   }
   adminMessage.innerHTML = `<div class="notice ${type}">${escapeHtml(text)}</div>`;
-}
-
-function renderMarketSettingsMessage(text, type = 'ok') {
-  if (!marketSettingsMessage) return;
-  marketSettingsMessage.innerHTML = text
-    ? `<span class="notice ${type}" style="display:inline-block; margin: 0">${escapeHtml(text)}</span>`
-    : '';
 }
 
 function showToast(text, type = 'ok') {
@@ -135,9 +115,6 @@ function getRowPayload(id) {
     platform: gamesWrap.querySelector(`select[data-field="platform"][data-id="${id}"]`).value.trim(),
     price: Number(gamesWrap.querySelector(`input[data-field="price"][data-id="${id}"]`).value),
     active: gamesWrap.querySelector(`select[data-field="active"][data-id="${id}"]`).value === '1',
-    pricechartingProductId: gamesWrap
-      .querySelector(`input[data-field="pricecharting_product_id"][data-id="${id}"]`)
-      .value.trim(),
   };
 }
 
@@ -145,14 +122,11 @@ function isRowChanged(existing, payload) {
   if (!existing) return false;
   const existingPrice = Number(existing.price);
   const nextPrice = Number(payload.price);
-  const existingProductId = String(existing.pricecharting_product_id || '').trim();
-  const nextProductId = String(payload.pricechartingProductId || '').trim();
 
   return (
     payload.title !== String(existing.title || '') ||
     payload.platform !== String(existing.platform || '') ||
     payload.active !== Boolean(existing.active) ||
-    existingProductId !== nextProductId ||
     Number.isNaN(nextPrice) ||
     Math.abs(existingPrice - nextPrice) >= 0.001
   );
@@ -181,25 +155,6 @@ function markBuylistUpdated() {
   localStorage.setItem(BUYLIST_SNAPSHOT_EVENT, JSON.stringify({ updatedAt: now, games }));
 }
 
-function checkDuplicateProductIds() {
-  const map = new Map();
-  for (const game of games) {
-    const productId = String(game.pricecharting_product_id || '').trim();
-    if (!productId) continue;
-    if (!map.has(productId)) map.set(productId, []);
-    map.get(productId).push(game);
-  }
-
-  const duplicates = Array.from(map.entries()).filter(([, list]) => list.length > 1);
-  if (duplicates.length > 0) {
-    const sample = duplicates
-      .slice(0, 2)
-      .map(([id, list]) => `ID ${id}: ${list.map((g) => g.title).join(', ')}`)
-      .join(' | ');
-    renderNotice(`Duplicate PriceCharting Product IDs detected. ${sample}`, 'warn');
-  }
-}
-
 async function saveGame(id, payload, quiet = false) {
   const res = await adminFetch(`/api/admin/games/${id}`, {
     method: 'PUT',
@@ -225,17 +180,11 @@ async function loadAdminSettings() {
   const settings = await res.json();
   if (!res.ok) throw new Error(settings.error || 'Could not load settings');
 
-  showMarketPricesPublicInput.value = settings.show_market_prices_public ? '1' : '0';
-  showPercentOfMarketInput.value = settings.show_percent_of_market ? '1' : '0';
-  marketUpdateFrequencyInput.value = String(settings.market_update_frequency_hours === 24 ? 24 : 12);
   currentBuylistVersionInput.value = settings.current_buylist_version || '';
 }
 
 async function saveAdminSettings() {
   const payload = {
-    show_market_prices_public: showMarketPricesPublicInput.value === '1',
-    show_percent_of_market: showPercentOfMarketInput.value === '1',
-    market_update_frequency_hours: Number(marketUpdateFrequencyInput.value) === 24 ? 24 : 12,
     current_buylist_version: currentBuylistVersionInput.value.trim(),
   };
 
@@ -247,115 +196,7 @@ async function saveAdminSettings() {
   if (!res.ok) throw new Error(body.error || 'Could not save settings');
 
   const settings = body.settings || {};
-  showMarketPricesPublicInput.value = settings.show_market_prices_public ? '1' : '0';
-  showPercentOfMarketInput.value = settings.show_percent_of_market ? '1' : '0';
-  marketUpdateFrequencyInput.value = String(settings.market_update_frequency_hours === 24 ? 24 : 12);
   currentBuylistVersionInput.value = settings.current_buylist_version || currentBuylistVersionInput.value;
-}
-
-function renderAddMarketResults(results) {
-  if (!addMarketResults) return;
-
-  if (!Array.isArray(results) || results.length === 0) {
-    addMarketResults.innerHTML = '<p class="muted" style="margin:0">No PriceCharting matches found.</p>';
-    return;
-  }
-
-  addMarketResults.innerHTML = `
-    <div class="card" style="margin: 0; padding: 0.6rem; border-style: dashed">
-      <strong>Top PriceCharting Matches</strong>
-      <ul style="margin: 0.45rem 0 0; padding-left: 1rem">
-        ${results
-          .map(
-            (item) => `
-          <li style="margin-bottom: 0.35rem">
-            <button type="button" class="secondary" data-action="use-add-market" data-id="${escapeHtml(
-              item.id
-            )}">
-              Use ${escapeHtml(item.id)}
-            </button>
-            <span>${escapeHtml(item.product_name || 'Unknown')} (${escapeHtml(item.console_name || 'Unknown')})</span>
-          </li>
-        `
-          )
-          .join('')}
-      </ul>
-    </div>
-  `;
-
-  addMarketResults.querySelectorAll('button[data-action="use-add-market"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-id');
-      addProductIdInput.value = id;
-      addMarketResults.innerHTML = `<p class="muted" style="margin:0">Selected Product ID: ${escapeHtml(id)}</p>`;
-    });
-  });
-}
-
-function renderRowMarketResults(gameId, title, platform, results) {
-  if (!rowMarketResults) return;
-
-  if (!Array.isArray(results) || results.length === 0) {
-    rowMarketResults.innerHTML = `<p class="muted">No PriceCharting matches found for ${escapeHtml(title)} (${escapeHtml(
-      platform || 'Unknown'
-    )}).</p>`;
-    return;
-  }
-
-  rowMarketResults.innerHTML = `
-    <article class="card" style="margin:0">
-      <strong>Match Product ID for ${escapeHtml(title)} (${escapeHtml(platform || 'Unknown')})</strong>
-      <ul style="margin: 0.55rem 0 0; padding-left: 1rem">
-        ${results
-          .map(
-            (item) => `
-          <li style="margin-bottom: 0.35rem">
-            <button
-              type="button"
-              class="secondary"
-              data-action="use-row-market"
-              data-game-id="${gameId}"
-              data-id="${escapeHtml(item.id)}"
-            >
-              Use ${escapeHtml(item.id)}
-            </button>
-            <span>${escapeHtml(item.product_name || 'Unknown')} (${escapeHtml(item.console_name || 'Unknown')})</span>
-          </li>
-        `
-          )
-          .join('')}
-      </ul>
-    </article>
-  `;
-
-  rowMarketResults.querySelectorAll('button[data-action="use-row-market"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const targetGameId = Number(btn.getAttribute('data-game-id'));
-      const id = btn.getAttribute('data-id');
-      const input = gamesWrap.querySelector(
-        `input[data-field="pricecharting_product_id"][data-id="${targetGameId}"]`
-      );
-      if (input) {
-        input.value = id;
-        renderNotice(`Set PriceCharting Product ID ${id}. Click Save for this row.`, 'ok');
-      }
-      rowMarketResults.innerHTML = '';
-    });
-  });
-}
-
-async function searchMarket(query) {
-  const res = await adminFetch(`/api/market/search?q=${encodeURIComponent(query)}`);
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error || 'Market search failed');
-  return body;
-}
-
-async function validateMarketProductId(productId) {
-  const res = await adminFetch(`/api/market/product?id=${encodeURIComponent(productId)}`);
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error || 'Market ID validation failed');
-  return body;
 }
 
 async function loadGames() {
@@ -372,7 +213,6 @@ async function loadGames() {
           <th>Platform</th>
           <th>Condition</th>
           <th>Price</th>
-          <th>PriceCharting ID</th>
           <th>Active</th>
           <th>Actions</th>
         </tr>
@@ -389,15 +229,6 @@ async function loadGames() {
               g.price
             )}" type="number" min="0" step="0.01" style="width: 100px" /></td>
             <td>
-              <input
-                data-field="pricecharting_product_id"
-                data-id="${g.id}"
-                value="${escapeHtml(g.pricecharting_product_id || '')}"
-                placeholder="Product ID"
-                style="width: 160px"
-              />
-            </td>
-            <td>
               <select data-field="active" data-id="${g.id}">
                 <option value="1" ${g.active ? 'selected' : ''}>Yes</option>
                 <option value="0" ${!g.active ? 'selected' : ''}>No</option>
@@ -405,8 +236,6 @@ async function loadGames() {
             </td>
             <td class="row-actions">
               <button class="secondary" data-action="save" data-id="${g.id}">Save</button>
-              <button class="secondary" data-action="validate-market" data-id="${g.id}">Validate ID</button>
-              <button class="secondary" data-action="search-market" data-id="${g.id}">Search PriceCharting</button>
               <button class="danger" data-action="delete" data-id="${g.id}">Delete</button>
             </td>
           </tr>
@@ -424,51 +253,6 @@ async function loadGames() {
 
       try {
         await saveGame(id, payload);
-      } catch (err) {
-        renderNotice(err.message, 'error');
-      }
-    });
-  });
-
-  gamesWrap.querySelectorAll('button[data-action="validate-market"]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = Number(btn.getAttribute('data-id'));
-      const input = gamesWrap.querySelector(`input[data-field="pricecharting_product_id"][data-id="${id}"]`);
-      const productId = input ? input.value.trim() : '';
-      if (!productId) {
-        renderNotice('Enter a PriceCharting Product ID first.', 'error');
-        return;
-      }
-
-      try {
-        const market = await validateMarketProductId(productId);
-        renderNotice(
-          `Validated: ${market.product_name || 'Unknown'} (${market.console_name || 'Unknown console'})`,
-          'ok'
-        );
-      } catch (err) {
-        renderNotice(err.message, 'error');
-      }
-    });
-  });
-
-  gamesWrap.querySelectorAll('button[data-action="search-market"]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = Number(btn.getAttribute('data-id'));
-      const titleInput = gamesWrap.querySelector(`input[data-field="title"][data-id="${id}"]`);
-      const platformInput = gamesWrap.querySelector(`select[data-field="platform"][data-id="${id}"]`);
-      const title = titleInput ? titleInput.value.trim() : '';
-      const platform = platformInput ? platformInput.value.trim() : '';
-
-      const query = `${title} ${platform}`.trim();
-      if (!query) {
-        renderNotice('Enter title/platform before searching PriceCharting.', 'error');
-        return;
-      }
-
-      try {
-        const results = await searchMarket(query);
-        renderRowMarketResults(id, title, platform, results);
       } catch (err) {
         renderNotice(err.message, 'error');
       }
@@ -494,7 +278,6 @@ async function loadGames() {
     });
   });
 
-  checkDuplicateProductIds();
 }
 
 function copyText(text, label) {
@@ -978,7 +761,6 @@ addGameForm.addEventListener('submit', async (e) => {
       platform: document.getElementById('platform').value,
       price: Number(document.getElementById('price').value),
       active: document.getElementById('active').value === '1',
-      pricechartingProductId: addProductIdInput ? addProductIdInput.value.trim() : '',
     };
 
     const res = await adminFetch('/api/admin/games', {
@@ -989,7 +771,6 @@ addGameForm.addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error(body.error || 'Could not add game');
 
     addGameForm.reset();
-    if (addMarketResults) addMarketResults.innerHTML = '';
     renderNotice('Game added.');
     showToast('Saved');
     await loadGames();
@@ -999,79 +780,12 @@ addGameForm.addEventListener('submit', async (e) => {
   }
 });
 
-searchMarketAddBtn.addEventListener('click', async () => {
-  const title = document.getElementById('title').value.trim();
-  const platform = document.getElementById('platform').value.trim();
-  const query = `${title} ${platform}`.trim();
-  if (!query) {
-    renderNotice('Enter title/platform first, then search PriceCharting.', 'error');
-    return;
-  }
-
-  try {
-    const results = await searchMarket(query);
-    renderAddMarketResults(results);
-  } catch (err) {
-    renderNotice(err.message, 'error');
-  }
-});
-
-validateMarketAddBtn.addEventListener('click', async () => {
-  const id = addProductIdInput.value.trim();
-  if (!id) {
-    renderNotice('Enter a Product ID to validate.', 'error');
-    return;
-  }
-
-  try {
-    const market = await validateMarketProductId(id);
-    renderNotice(`Validated: ${market.product_name || 'Unknown'} (${market.console_name || 'Unknown'})`, 'ok');
-  } catch (err) {
-    renderNotice(err.message, 'error');
-  }
-});
-
-marketSettingsForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  try {
-    await saveAdminSettings();
-    renderMarketSettingsMessage('Market settings saved.');
-    showToast('Saved');
-  } catch (err) {
-    renderMarketSettingsMessage(err.message, 'error');
-  }
-});
-
-runMarketSyncNowBtn.addEventListener('click', async () => {
-  try {
-    renderMarketSettingsMessage('Running sync...');
-    const res = await adminFetch('/api/admin/market/sync', {
-      method: 'POST',
-      body: JSON.stringify({ forceRun: true, forceCapture: true }),
-    });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.error || 'Sync failed.');
-
-    renderMarketSettingsMessage(
-      `Sync complete. Updated ${body.synced || 0}/${body.total || 0}, snapshots: ${body.snapshotInserted || 0}, failed: ${
-        body.failed || 0
-      }.`
-    );
-    showToast('Saved');
-    await loadGames();
-    markBuylistUpdated();
-  } catch (err) {
-    renderMarketSettingsMessage(err.message, 'error');
-  }
-});
-
 refreshGamesBtn.addEventListener('click', async () => {
   try {
     await loadGames();
     await loadSubmissions(submissionsState.page);
     await loadFaqs();
     await loadAdminSettings();
-    rowMarketResults.innerHTML = '';
     renderNotice('Data refreshed.');
   } catch (err) {
     renderNotice(err.message, 'error');

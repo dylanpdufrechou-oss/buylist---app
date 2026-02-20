@@ -60,18 +60,6 @@
               <option value="1">Active</option>
               <option value="0">Inactive</option>
             </select>
-            <div class="grid two" style="grid-column: 1 / -1">
-              <input
-                id="pricechartingProductId"
-                placeholder="PriceCharting Product ID (optional)"
-                autocomplete="off"
-              />
-              <div class="row-actions">
-                <button id="searchMarketAdd" type="button" class="secondary">Search PriceCharting</button>
-                <button id="validateMarketAdd" type="button" class="secondary">Validate ID</button>
-              </div>
-            </div>
-            <div id="addMarketResults" class="muted" style="grid-column: 1 / -1"></div>
             <button type="submit">Add</button>
           </form>
         </section>
@@ -87,43 +75,7 @@
             </label>
             <span class="muted">CSV header: title,platform,condition,price,active</span>
           </div>
-          <p class="muted" style="margin-top: 0">
-            Map each title to a unique PriceCharting Product ID for market sync and payout-vs-market proof.
-          </p>
           <div id="gamesWrap"></div>
-          <div id="rowMarketResults" style="margin-top: 0.7rem"></div>
-        </section>
-
-        <section class="card">
-          <h2 style="margin-top: 0">Market Display Settings</h2>
-          <form id="marketSettingsForm" class="grid two">
-            <label class="grid">
-              <span class="muted">Show Market Prices Publicly</span>
-              <select id="showMarketPricesPublic">
-                <option value="0">Off</option>
-                <option value="1">On</option>
-              </select>
-            </label>
-            <label class="grid">
-              <span class="muted">Show % Of Market</span>
-              <select id="showPercentOfMarket">
-                <option value="1">On</option>
-                <option value="0">Off</option>
-              </select>
-            </label>
-            <label class="grid">
-              <span class="muted">Market Update Frequency (Hours)</span>
-              <select id="marketUpdateFrequencyHours">
-                <option value="12">12</option>
-                <option value="24">24</option>
-              </select>
-            </label>
-            <div class="row-actions" style="align-items: end">
-              <button id="saveMarketSettings" type="submit">Save Settings</button>
-              <button id="runMarketSyncNow" type="button" class="secondary">Run Sync Now</button>
-            </div>
-          </form>
-          <div id="marketSettingsMessage" class="muted" style="margin-top: 0.6rem"></div>
         </section>
 
         <section class="card">

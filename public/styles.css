@@ -834,116 +834,6 @@ td {
   font-size: 0.86rem;
 }
 
-.market-footnote {
-  margin: 0.65rem 0 0;
-  font-size: 0.84rem;
-}
-
-.market-cell {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 220px;
-}
-
-.market-cell > div {
-  font-size: 0.84rem;
-}
-
-.market-badge-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.market-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid rgba(96, 255, 191, 0.6);
-  background: rgba(96, 255, 191, 0.14);
-  color: #c6ffe4;
-  font-size: 0.74rem;
-  font-weight: 700;
-}
-
-.market-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.25rem;
-}
-
-a.market-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  padding: 0.35rem 0.65rem;
-  border-radius: 10px;
-  border: 1px solid var(--line-strong);
-  background: #141d44;
-  color: #d8e5ff;
-  text-decoration: none;
-  font-size: 0.84rem;
-  font-weight: 700;
-}
-
-a.market-link:hover {
-  text-decoration: none;
-  filter: brightness(1.05);
-}
-
-.market-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 1500;
-  display: grid;
-  place-items: center;
-  background: rgba(5, 9, 24, 0.75);
-  padding: 1rem;
-}
-
-.market-modal-card {
-  width: min(780px, 96vw);
-  border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  background: linear-gradient(180deg, #18245b, #10173b);
-  box-shadow: var(--shadow);
-  padding: 0.9rem;
-}
-
-.market-modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-
-.market-chart-shell {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.market-chart {
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-}
-
-.market-chart-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-  color: var(--ink-dim);
-  font-size: 0.84rem;
-}
-
-body.modal-open {
-  overflow: hidden;
-}
-
 a {
   color: #9fd7ff;
 }
@@ -1086,14 +976,6 @@ a {
   .footer-links {
     width: 100%;
     justify-content: flex-start;
-  }
-
-  .market-cell {
-    min-width: 180px;
-  }
-
-  .market-modal {
-    padding: 0.6rem;
   }
 
   .admin-modal {
