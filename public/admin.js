@@ -99,6 +99,20 @@ const BUYLIST_UPDATED_EVENT = 'buylistUpdatedAt';
 const BUYLIST_SNAPSHOT_EVENT = 'buylistSnapshot';
 const LAST_PLATFORM_KEY = 'adminLastPlatform';
 const LAST_CONDITION_KEY = 'adminLastCondition';
+const EPHEMERAL_SNAPSHOT_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
+const EPHEMERAL_RESET_MAX_SERVER_ROWS = 12;
+const EPHEMERAL_RESTORE_MIN_SNAPSHOT_ROWS = 10;
+const EPHEMERAL_RESTORE_MIN_DIFF = 5;
+const DEFAULT_SEED_TITLES = new Set([
+  'Wii Sports Resort',
+  'Metal Gear Solid 3: Subsistence',
+  'Uncharted 2: Among Thieves',
+  'Halo 2',
+  'Gears of War 3',
+  'Super Mario 3D World',
+  'Pokemon Omega Ruby',
+  'Mario Kart DS',
+]);
 
 const gameFilters = {
   search: '',
@@ -118,6 +132,8 @@ let submissionsState = {
   q: '',
   sort: 'newest',
 };
+let runtimeInfo = { isVercel: false, ephemeralStorage: false };
+let hasAttemptedEphemeralRestore = false;
 
 function escapeHtml(str) {
   return String(str || '')
@@ -273,6 +289,118 @@ async function adminFetch(url, options = {}) {
   }
 
   return res;
+}
+
+async function loadRuntimeInfo() {
+  try {
+    const res = await fetch(`/api/runtime?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const body = await res.json();
+    runtimeInfo = {
+      isVercel: Boolean(body && body.isVercel),
+      ephemeralStorage: Boolean(body && body.ephemeralStorage),
+    };
+  } catch {
+    runtimeInfo = { isVercel: false, ephemeralStorage: false };
+  }
+}
+
+function loadLocalBuylistSnapshot() {
+  try {
+    const raw = localStorage.getItem(BUYLIST_SNAPSHOT_EVENT);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.games)) return null;
+    const updatedAt = Number(parsed.updatedAt || 0);
+    if (!updatedAt || Date.now() - updatedAt > EPHEMERAL_SNAPSHOT_MAX_AGE_MS) return null;
+    return {
+      updatedAt,
+      games: parsed.games,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function csvEscape(value) {
+  const text = String(value ?? '');
+  if (text.includes(',') || text.includes('"') || text.includes('\n') || text.includes('\r')) {
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+  return text;
+}
+
+function gamesToCsv(rows) {
+  const lines = ['title,platform,condition,price,active'];
+  for (const row of rows) {
+    const title = String(row?.title || '').trim();
+    if (!title) continue;
+    const platform = String(row?.platform || '').trim();
+    const condition = normalizeConditionValue(row?.condition_note || row?.condition);
+    const numericPrice = Number(row?.price);
+    const price = Number.isFinite(numericPrice) ? numericPrice.toFixed(2) : '0.00';
+    const active = row?.active ? '1' : '0';
+    lines.push(
+      [title, platform, condition, price, active]
+        .map((value) => csvEscape(value))
+        .join(',')
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function canonicalGameSignature(rows) {
+  if (!Array.isArray(rows)) return '';
+  return rows
+    .map((row) => {
+      const title = String(row?.title || '').trim().toLowerCase();
+      const platform = String(row?.platform || '').trim().toLowerCase();
+      const condition = normalizeConditionValue(row?.condition_note || row?.condition).toLowerCase();
+      const numericPrice = Number(row?.price);
+      const price = Number.isFinite(numericPrice) ? numericPrice.toFixed(2) : '0.00';
+      const active = row?.active ? '1' : '0';
+      return `${title}|${platform}|${condition}|${price}|${active}`;
+    })
+    .sort()
+    .join('~');
+}
+
+function isLikelySeedGames(rows) {
+  if (!Array.isArray(rows) || rows.length === 0 || rows.length > DEFAULT_SEED_TITLES.size) return false;
+  return rows.every((row) => DEFAULT_SEED_TITLES.has(String(row?.title || '').trim()));
+}
+
+function shouldAttemptEphemeralRestore(serverRows, snapshot) {
+  if (!runtimeInfo.ephemeralStorage || hasAttemptedEphemeralRestore) return false;
+  if (!snapshot || !Array.isArray(snapshot.games)) return false;
+  if (snapshot.games.length === 0) return false;
+  if (canonicalGameSignature(snapshot.games) === canonicalGameSignature(serverRows)) return false;
+  if (!Array.isArray(serverRows) || serverRows.length === 0) return true;
+  if (isLikelySeedGames(serverRows)) return snapshot.games.length > serverRows.length;
+  if (snapshot.games.length < EPHEMERAL_RESTORE_MIN_SNAPSHOT_ROWS) return false;
+  if (serverRows.length > EPHEMERAL_RESET_MAX_SERVER_ROWS) return false;
+  return snapshot.games.length - serverRows.length >= EPHEMERAL_RESTORE_MIN_DIFF;
+}
+
+async function restoreFromLocalSnapshot(snapshot) {
+  const csv = gamesToCsv(snapshot.games);
+  if (!csv.trim()) return false;
+
+  const res = await adminFetch('/api/admin/games/import-commit', {
+    method: 'POST',
+    body: JSON.stringify({
+      csv,
+      mode: 'replace',
+      skipDuplicates: false,
+      stopOnError: true,
+      replaceConfirm: 'REPLACE',
+    }),
+  });
+  const body = await res.json();
+  if (!res.ok) {
+    throw new Error(body.error || 'Could not restore local backup.');
+  }
+  return true;
 }
 
 function markBuylistUpdated() {
@@ -758,11 +886,34 @@ async function saveAdminSettings() {
 }
 
 async function loadGames() {
-  const res = await adminFetch(`/api/admin/games?t=${Date.now()}`, {
-    cache: 'no-store',
-  });
-  const rows = await res.json();
-  games = Array.isArray(rows) ? rows : [];
+  const fetchGames = async () => {
+    const res = await adminFetch(`/api/admin/games?t=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    return res.json();
+  };
+
+  let rows = await fetchGames();
+  let nextGames = Array.isArray(rows) ? rows : [];
+  const snapshot = loadLocalBuylistSnapshot();
+  if (shouldAttemptEphemeralRestore(nextGames, snapshot)) {
+    hasAttemptedEphemeralRestore = true;
+    try {
+      const restored = await restoreFromLocalSnapshot(snapshot);
+      if (restored) {
+        rows = await fetchGames();
+        nextGames = Array.isArray(rows) ? rows : [];
+        games = nextGames;
+        markBuylistUpdated();
+        showToast('Recovered buylist from local backup.', 'warn');
+        renderNotice('Recovered buylist from local browser backup after storage reset.', 'warn');
+      }
+    } catch (err) {
+      renderNotice(err.message || 'Could not recover local backup.', 'error');
+    }
+  }
+
+  games = nextGames;
   resetDraftsFromGames();
   syncGameFilterOptions();
   renderGamesTable();
@@ -1235,6 +1386,7 @@ window.addEventListener('beforeunload', (e) => {
 
 async function bootstrapAdmin() {
   try {
+    await loadRuntimeInfo();
     await loadGames();
     await loadSubmissions(1);
     await loadFaqs();
@@ -1244,7 +1396,14 @@ async function bootstrapAdmin() {
     renderGamesTable();
     updateImportReplaceConfirmVisibility();
     adminApp.style.display = 'block';
-    renderNotice('Connected.');
+    if (runtimeInfo.ephemeralStorage) {
+      renderNotice(
+        'Connected. Warning: this deployment uses temporary storage. Local backup recovery is enabled for this browser.',
+        'warn'
+      );
+    } else {
+      renderNotice('Connected.');
+    }
   } catch (err) {
     renderNotice(err.message, 'error');
   }

@@ -10,6 +10,7 @@ const adminKey = process.env.ADMIN_KEY || 'change-this-admin-key';
 const isVercel = process.env.VERCEL === '1';
 
 const dataDir = process.env.DATA_DIR || (isVercel ? '/tmp' : path.join(__dirname, 'data'));
+const isEphemeralStorage = isVercel && path.resolve(dataDir).startsWith('/tmp');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
@@ -433,8 +434,16 @@ function initDb() {
 
 initDb();
 
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/api/runtime', (req, res) => {
+  res.json({
+    isVercel,
+    ephemeralStorage: isEphemeralStorage,
+    storagePath: path.resolve(dataDir),
+  });
+});
 
 function requireAdmin(req, res, next) {
   if (req.headers['x-admin-key'] !== adminKey) {
