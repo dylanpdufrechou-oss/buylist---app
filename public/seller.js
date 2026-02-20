@@ -222,28 +222,29 @@ function initConditionStandardsAccordion() {
   });
 }
 
-function matchesPlatformTab(game, tab) {
-  if (!tab) return false;
+function normalizePlatformForTab(raw) {
+  const original = String(raw || '').trim();
+  if (!original) return '';
 
-  const platform = String(game.platform || '').toLowerCase();
-  if (tab === 'Wii U') return platform.includes('wii u');
-  if (tab === 'Wii') return platform.includes('wii') && !platform.includes('wii u');
-  if (tab === 'PS3') return platform.includes('ps3') || platform.includes('playstation 3');
-  if (tab === 'PS2') return platform.includes('ps2') || platform.includes('playstation 2');
-  if (tab === 'PS4') return platform.includes('ps4') || platform.includes('playstation 4') || platform.includes('playstation4');
-  if (tab === 'OG Xbox') {
-    return platform === 'xbox' || platform.includes('og xbox') || platform.includes('original xbox');
+  const platform = original.toLowerCase().replace(/\s+/g, ' ');
+  if (platform.includes('wii u') || platform.includes('wiiu')) return 'Wii U';
+  if (platform === 'wii' || platform.includes('nintendo wii')) return 'Wii';
+  if (platform === 'ps4' || platform.includes('playstation 4') || platform.includes('playstation4')) return 'PS4';
+  if (platform === 'ps3' || platform.includes('playstation 3') || platform.includes('playstation3')) return 'PS3';
+  if (platform === 'ps2' || platform.includes('playstation 2') || platform.includes('playstation2')) return 'PS2';
+  if (platform === 'xbox' || platform.includes('og xbox') || platform.includes('original xbox')) return 'OG Xbox';
+  if (platform.includes('xbox 360') || platform === '360') return 'Xbox 360';
+  if (platform.includes('xbox one') || platform.includes('xboxone') || platform.includes('xbox 1')) return 'Xbox One';
+  if (platform.includes('nintendo switch') || platform === 'switch' || platform.startsWith('switch ')) {
+    return 'Nintendo Switch';
   }
-  if (tab === 'Xbox 360') return platform.includes('xbox 360') || platform.includes('360');
-  if (tab === 'Xbox One') {
-    return platform.includes('xbox one') || platform.includes('xboxone') || platform.includes('xbox 1');
-  }
-  if (tab === 'Nintendo Switch') {
-    return platform.includes('nintendo switch') || platform === 'switch' || platform.startsWith('switch ');
-  }
-  if (tab === '3DS') return platform.includes('3ds');
-  if (tab === 'DS') return platform.includes('ds') && !platform.includes('3ds');
-  return false;
+  if (platform.includes('3ds')) return '3DS';
+  if (platform.includes('ds')) return 'DS';
+  return original;
+}
+
+function matchesPlatformTab(game, tab) {
+  return Boolean(tab) && normalizePlatformForTab(game.platform) === tab;
 }
 
 function getGamesForPlatform(tab) {

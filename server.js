@@ -49,6 +49,27 @@ function normalizeCondition(raw) {
   return value || 'CIB';
 }
 
+function normalizePlatform(raw) {
+  const original = safeString(raw);
+  if (!original) return '';
+
+  const platform = original.toLowerCase().replace(/\s+/g, ' ');
+  if (platform.includes('wii u') || platform.includes('wiiu')) return 'Wii U';
+  if (platform === 'wii' || platform.includes('nintendo wii')) return 'Wii';
+  if (platform === 'ps4' || platform.includes('playstation 4') || platform.includes('playstation4')) return 'PS4';
+  if (platform === 'ps3' || platform.includes('playstation 3') || platform.includes('playstation3')) return 'PS3';
+  if (platform === 'ps2' || platform.includes('playstation 2') || platform.includes('playstation2')) return 'PS2';
+  if (platform === 'xbox' || platform.includes('og xbox') || platform.includes('original xbox')) return 'OG Xbox';
+  if (platform.includes('xbox 360') || platform === '360') return 'Xbox 360';
+  if (platform.includes('xbox one') || platform.includes('xboxone') || platform.includes('xbox 1')) return 'Xbox One';
+  if (platform.includes('nintendo switch') || platform === 'switch' || platform.startsWith('switch ')) {
+    return 'Nintendo Switch';
+  }
+  if (platform.includes('3ds')) return '3DS';
+  if (platform.includes('ds')) return 'DS';
+  return original;
+}
+
 function currentMonthVersion() {
   return new Date().toISOString().slice(0, 7);
 }
@@ -110,7 +131,9 @@ function parseActiveValue(raw) {
 }
 
 function gameKey(title, platform, condition) {
-  return `${safeString(title).toLowerCase()}|${safeString(platform).toLowerCase()}|${normalizeCondition(condition).toLowerCase()}`;
+  return `${safeString(title).toLowerCase()}|${normalizePlatform(platform).toLowerCase()}|${normalizeCondition(
+    condition
+  ).toLowerCase()}`;
 }
 
 function splitCsvLineSimple(line) {
@@ -154,7 +177,7 @@ function parseGamesCsv(csvText) {
 
     const [titleRaw, platformRaw, conditionRaw, priceRaw, activeRaw] = parts;
     const title = safeString(titleRaw);
-    const platform = safeString(platformRaw);
+    const platform = normalizePlatform(platformRaw);
     const condition = normalizeCondition(conditionRaw);
     const priceCents = parsePriceToCents(priceRaw);
     const active = parseActiveValue(activeRaw);
@@ -346,6 +369,24 @@ function initDb() {
   ensureColumn('submission_items', 'line_total_cents_at_submit', 'INTEGER');
 
   setDefaultSetting('current_buylist_version', currentMonthVersion());
+
+  const normalizePlatformsTx = db.transaction(() => {
+    const rows = db.prepare('SELECT id, platform FROM games').all();
+    const updatePlatform = db.prepare(
+      `UPDATE games
+       SET platform = ?,
+           updated_at = datetime('now')
+       WHERE id = ?`
+    );
+    for (const row of rows) {
+      const current = safeString(row.platform);
+      const normalized = normalizePlatform(current);
+      if (normalized !== current) {
+        updatePlatform.run(normalized, row.id);
+      }
+    }
+  });
+  normalizePlatformsTx();
 
   const count = db.prepare('SELECT COUNT(*) AS c FROM games').get().c;
   if (count === 0) {
@@ -1200,7 +1241,7 @@ app.post('/api/admin/games', requireAdmin, (req, res) => {
     )
     .run(
       title.trim(),
-      (platform || '').trim(),
+      normalizePlatform(platform),
       normalizedCondition,
       priceCents,
       active === false ? 0 : 1
@@ -1250,7 +1291,7 @@ app.put('/api/admin/games/:id', requireAdmin, (req, res) => {
      WHERE id = ?`
   ).run(
     title.trim(),
-    (platform || '').trim(),
+    normalizePlatform(platform),
     normalizedCondition,
     priceCents,
     active ? 1 : 0,
