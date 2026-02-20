@@ -393,7 +393,8 @@ h3 {
   border: 1px solid var(--line-strong);
   border-radius: 10px;
   overflow: auto;
-  min-height: clamp(320px, 60vh, 720px);
+  min-height: clamp(340px, 68vh, 760px);
+  max-height: calc(100vh - 320px);
   background: rgba(8, 14, 38, 0.55);
 }
 
@@ -764,15 +765,6 @@ td {
 
 .sheet-table tbody tr:hover {
   background: rgba(25, 240, 255, 0.08);
-}
-
-.buylist-table-wrap tbody tr[data-row-game-id] {
-  cursor: pointer;
-}
-
-.buylist-table-wrap tbody tr.is-row-highlighted {
-  background: rgba(96, 255, 191, 0.2);
-  box-shadow: inset 0 0 0 1px rgba(96, 255, 191, 0.75);
 }
 
 .game-title-cell {
