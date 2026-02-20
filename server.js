@@ -294,6 +294,16 @@ function safeString(raw) {
   return String(raw).trim();
 }
 
+function toSettingBoolean(raw, fallback = true) {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  if (typeof raw === 'boolean') return raw;
+  const value = safeString(raw).toLowerCase();
+  if (!value) return fallback;
+  if (['1', 'true', 'yes', 'on', 'enabled'].includes(value)) return true;
+  if (['0', 'false', 'no', 'off', 'disabled'].includes(value)) return false;
+  return fallback;
+}
+
 function asPublicGame(row) {
   const priceCents = Number(row.price_cents || 0);
   const previousPriceCents = toFiniteNumber(row.previous_price_cents, null);
@@ -316,6 +326,18 @@ function asPublicGame(row) {
     price_change_percent: changePercent,
     price_change_direction: priceChangeDirection,
     comparison_baseline_version: baselineVersion,
+  };
+}
+
+function withoutPriceChangeFields(game) {
+  return {
+    ...game,
+    previous_price_cents: null,
+    previous_price: null,
+    price_change_cents: null,
+    price_change_percent: null,
+    price_change_direction: 'none',
+    comparison_baseline_version: null,
   };
 }
 
@@ -800,6 +822,7 @@ async function initDb() {
   await ensureColumn('submission_items', 'line_total_cents_at_submit', 'INTEGER');
 
   await setDefaultSetting('current_buylist_version', currentMonthVersion());
+  await setDefaultSetting('show_price_change_highlights_public', 'true');
 
   await withTransaction(async (tx) => {
     const rows = await tx.all('SELECT id, platform FROM games');
@@ -914,7 +937,18 @@ const dbInitPromise = initDb().catch((error) => {
 });
 
 app.use(express.json({ limit: '5mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.html' || ext === '.js' || ext === '.css') {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    },
+  })
+);
 
 const asyncHandler = (handler) => (req, res, next) => {
   Promise.resolve(handler(req, res, next)).catch(next);
@@ -953,15 +987,19 @@ app.get(
   '/api/admin/settings',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    const currentBuylistVersion = normalizeBuylistVersion(
-      await getSettingValue('current_buylist_version', currentMonthVersion())
-    );
+    const [currentBuylistVersionRaw, showHighlightsRaw] = await Promise.all([
+      getSettingValue('current_buylist_version', currentMonthVersion()),
+      getSettingValue('show_price_change_highlights_public', 'true'),
+    ]);
+    const currentBuylistVersion = normalizeBuylistVersion(currentBuylistVersionRaw);
+    const showPriceChangeHighlightsPublic = toSettingBoolean(showHighlightsRaw, true);
     const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
     const lastPublishedVersion = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.version : null;
     const lastPublishedAt = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.published_at : null;
     const comparisonBaselineVersion = snapshotMeta.baseline ? snapshotMeta.baseline.version : null;
     res.json({
       current_buylist_version: currentBuylistVersion,
+      show_price_change_highlights_public: showPriceChangeHighlightsPublic,
       last_published_version: lastPublishedVersion,
       last_published_at: lastPublishedAt,
       comparison_baseline_version: comparisonBaselineVersion,
@@ -973,12 +1011,21 @@ app.put(
   '/api/admin/settings',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    const { current_buylist_version } = req.body || {};
+    const { current_buylist_version, show_price_change_highlights_public } = req.body || {};
     const currentBuylistVersion = normalizeBuylistVersion(current_buylist_version);
+    const currentShowHighlightsRaw = await getSettingValue('show_price_change_highlights_public', 'true');
+    const showPriceChangeHighlightsPublic = toSettingBoolean(
+      show_price_change_highlights_public,
+      toSettingBoolean(currentShowHighlightsRaw, true)
+    );
 
     await db.run("UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = ?", [
       currentBuylistVersion,
       'current_buylist_version',
+    ]);
+    await db.run("UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = ?", [
+      showPriceChangeHighlightsPublic ? 'true' : 'false',
+      'show_price_change_highlights_public',
     ]);
 
     const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
@@ -990,6 +1037,7 @@ app.put(
       ok: true,
       settings: {
         current_buylist_version: currentBuylistVersion,
+        show_price_change_highlights_public: showPriceChangeHighlightsPublic,
         last_published_version: lastPublishedVersion,
         last_published_at: lastPublishedAt,
         comparison_baseline_version: comparisonBaselineVersion,
@@ -1092,7 +1140,14 @@ app.get(
     });
     const adminView = req.headers['x-admin-key'] === adminKey;
     const includeInactive = adminView && req.query.includeInactive === 'true';
-    const rows = (await getGameRows(includeInactive)).map((row) => asPublicGame(row));
+    const showPriceChangeHighlightsPublic = toSettingBoolean(
+      await getSettingValue('show_price_change_highlights_public', 'true'),
+      true
+    );
+    let rows = (await getGameRows(includeInactive)).map((row) => asPublicGame(row));
+    if (!showPriceChangeHighlightsPublic) {
+      rows = rows.map((row) => withoutPriceChangeFields(row));
+    }
     res.json(rows);
   })
 );

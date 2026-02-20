@@ -4,6 +4,7 @@ const adminApp = document.getElementById('adminApp');
 const adminMessage = document.getElementById('adminMessage');
 
 const currentBuylistVersionInput = document.getElementById('currentBuylistVersion');
+const showPriceChangeHighlightsInput = document.getElementById('showPriceChangeHighlights');
 const saveBuylistVersionBtn = document.getElementById('saveBuylistVersion');
 const publishBuylistSnapshotBtn = document.getElementById('publishBuylistSnapshot');
 const lastPublishedVersionEl = document.getElementById('lastPublishedVersion');
@@ -143,6 +144,7 @@ let runtimeInfo = { isVercel: false, ephemeralStorage: false, persistentStorage:
 let hasAttemptedEphemeralRestore = false;
 let adminSettings = {
   current_buylist_version: '',
+  show_price_change_highlights_public: true,
   last_published_version: null,
   last_published_at: null,
   comparison_baseline_version: null,
@@ -276,6 +278,9 @@ function renderPublishMeta() {
   }
   if (lastPublishedAtWrap) {
     lastPublishedAtWrap.style.display = adminSettings.last_published_version ? 'inline' : 'none';
+  }
+  if (showPriceChangeHighlightsInput) {
+    showPriceChangeHighlightsInput.value = adminSettings.show_price_change_highlights_public ? '1' : '0';
   }
 }
 
@@ -1004,6 +1009,7 @@ async function loadAdminSettings() {
   const nextCurrentVersion = settings.current_buylist_version || '';
   adminSettings = {
     current_buylist_version: nextCurrentVersion,
+    show_price_change_highlights_public: settings.show_price_change_highlights_public !== false,
     last_published_version: settings.last_published_version || null,
     last_published_at: settings.last_published_at || null,
     comparison_baseline_version: settings.comparison_baseline_version || null,
@@ -1015,6 +1021,9 @@ async function loadAdminSettings() {
 async function saveAdminSettings() {
   const payload = {
     current_buylist_version: currentBuylistVersionInput.value.trim(),
+    show_price_change_highlights_public: showPriceChangeHighlightsInput
+      ? showPriceChangeHighlightsInput.value === '1'
+      : true,
   };
 
   const res = await adminFetch('/api/admin/settings', {
@@ -1028,6 +1037,7 @@ async function saveAdminSettings() {
   const nextCurrentVersion = settings.current_buylist_version || currentBuylistVersionInput.value;
   adminSettings = {
     current_buylist_version: nextCurrentVersion,
+    show_price_change_highlights_public: settings.show_price_change_highlights_public !== false,
     last_published_version: settings.last_published_version || null,
     last_published_at: settings.last_published_at || null,
     comparison_baseline_version: settings.comparison_baseline_version || null,
@@ -1609,7 +1619,7 @@ connectBtn.addEventListener('click', () => {
 saveBuylistVersionBtn.addEventListener('click', async () => {
   try {
     await saveAdminSettings();
-    renderNotice('Buylist version saved.');
+    renderNotice('Settings saved.');
     showToast('Saved');
     await loadGames();
   } catch (err) {

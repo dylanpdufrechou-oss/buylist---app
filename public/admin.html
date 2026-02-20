@@ -31,6 +31,14 @@
               <p class="muted" style="margin: 0">
                 Used to lock pricing for new submissions (example: 2026-02)
               </p>
+              <label for="showPriceChangeHighlights" class="muted" style="margin-top: 0.5rem"
+                >Seller Price Change Highlights</label
+              >
+              <select id="showPriceChangeHighlights">
+                <option value="1">On (Show green/red changes)</option>
+                <option value="0">Off (Show normal pricing only)</option>
+              </select>
+              <p class="muted" style="margin: 0">Controls whether buff/nerf highlights appear on public seller pages.</p>
               <div id="buylistPublishMeta" class="buylist-publish-meta">
                 <p class="muted" style="margin: 0">
                   Last published: <strong id="lastPublishedVersion">-</strong>
@@ -42,7 +50,7 @@
               </div>
             </div>
             <div class="row-actions buylist-publish-actions" style="align-items: end">
-              <button id="saveBuylistVersion" type="button">Save Version</button>
+              <button id="saveBuylistVersion" type="button">Save Settings</button>
               <button id="publishBuylistSnapshot" type="button" class="secondary">Publish Version Snapshot</button>
             </div>
           </div>
