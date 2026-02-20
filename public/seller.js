@@ -127,7 +127,7 @@ function priceDeltaMeta(game) {
       className: 'new',
       extra: '<span class="price-delta-tag">New</span>',
       tooltip: baselineVersion ? `New this version (vs ${baselineVersion})` : 'New this version',
-      deltaLine: 'New this version',
+      deltaLine: '',
     };
   }
 
@@ -135,7 +135,7 @@ function priceDeltaMeta(game) {
     className: '',
     extra: '',
     tooltip: hasPrevious && baselineVersion ? `Same as ${asMoney(previousCents / 100)}${baselineSuffix}` : '',
-    deltaLine: hasPrevious && baselineVersion ? 'No change' : '',
+    deltaLine: '',
   };
 }
 
@@ -681,20 +681,21 @@ function renderTable() {
 async function loadGames() {
   renderTabs();
   renderTable();
-
-  const snapshot = loadSnapshotFromStorage();
-  if (snapshot) {
+  try {
+    const r = await fetch(`/api/games?t=${Date.now()}`, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`Games fetch failed (${r.status})`);
+    const nextGames = await r.json();
+    // Server is source of truth so admin price edits reflect immediately on seller pages.
+    applyGames(nextGames);
+  } catch {
+    const snapshot = loadSnapshotFromStorage();
+    if (!snapshot || !Array.isArray(snapshot.games)) throw new Error('Could not load games');
     const ts = Number(snapshot.updatedAt || 0);
     if (ts > localSnapshotUpdatedAt) {
       localSnapshotUpdatedAt = ts;
-      applyGames(snapshot.games);
     }
+    applyGames(snapshot.games);
   }
-
-  const r = await fetch(`/api/games?t=${Date.now()}`, { cache: 'no-store' });
-  const nextGames = await r.json();
-  // Always reconcile with server truth so admin price edits reflect immediately on seller pages.
-  applyGames(nextGames);
 }
 
 async function loadFaqs() {

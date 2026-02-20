@@ -783,13 +783,13 @@ td {
 }
 
 .buylist-table-wrap .sheet-table tbody tr.delta-up td {
-  background: rgba(22, 72, 55, 0.86) !important;
-  color: #8effd8 !important;
+  background: rgba(24, 240, 110, 0.15) !important;
+  color: #18f06e !important;
 }
 
 .buylist-table-wrap .sheet-table tbody tr.delta-down td {
-  background: rgba(92, 30, 45, 0.86) !important;
-  color: #ffc0cd !important;
+  background: rgba(255, 59, 77, 0.15) !important;
+  color: #ff3b4d !important;
 }
 
 .buylist-table-wrap .sheet-table tbody tr.delta-up td *,
@@ -798,35 +798,35 @@ td {
 }
 
 .buylist-table-wrap .sheet-table tbody tr.delta-up:hover td {
-  background: rgba(26, 84, 64, 0.92) !important;
+  background: rgba(24, 240, 110, 0.22) !important;
 }
 
 .buylist-table-wrap .sheet-table tbody tr.delta-down:hover td {
-  background: rgba(112, 36, 55, 0.92) !important;
+  background: rgba(255, 59, 77, 0.22) !important;
 }
 
 .buylist-table-wrap .sheet-table tbody tr.delta-up input[type='number'] {
-  color: #8effd8 !important;
-  border-color: rgba(96, 255, 191, 0.75) !important;
-  background: rgba(10, 38, 33, 0.86) !important;
+  color: #18f06e !important;
+  border-color: rgba(24, 240, 110, 0.72) !important;
+  background: rgba(24, 240, 110, 0.08) !important;
 }
 
 .buylist-table-wrap .sheet-table tbody tr.delta-down input[type='number'] {
-  color: #ffc0cd !important;
-  border-color: rgba(255, 123, 146, 0.8) !important;
-  background: rgba(58, 22, 34, 0.86) !important;
+  color: #ff3b4d !important;
+  border-color: rgba(255, 59, 77, 0.75) !important;
+  background: rgba(255, 59, 77, 0.08) !important;
 }
 
 .buylist-table-wrap .sheet-table tbody tr.delta-up .add-btn.secondary {
-  color: #8effd8 !important;
-  border-color: rgba(96, 255, 191, 0.78) !important;
-  background: rgba(10, 40, 34, 0.92) !important;
+  color: #18f06e !important;
+  border-color: rgba(24, 240, 110, 0.8) !important;
+  background: rgba(24, 240, 110, 0.12) !important;
 }
 
 .buylist-table-wrap .sheet-table tbody tr.delta-down .add-btn.secondary {
-  color: #ffc0cd !important;
-  border-color: rgba(255, 123, 146, 0.82) !important;
-  background: rgba(64, 25, 39, 0.92) !important;
+  color: #ff3b4d !important;
+  border-color: rgba(255, 59, 77, 0.8) !important;
+  background: rgba(255, 59, 77, 0.12) !important;
 }
 
 .game-title-cell {
@@ -1035,11 +1035,11 @@ input[type='checkbox'] {
 }
 
 .price-cell-value.up {
-  color: #89ffd0;
+  color: #18f06e;
 }
 
 .price-cell-value.down {
-  color: #ffb1bf;
+  color: #ff3b4d;
 }
 
 .price-cell-value.new {
@@ -1047,11 +1047,11 @@ input[type='checkbox'] {
 }
 
 .price-delta-note.up {
-  color: #89ffd0;
+  color: #18f06e;
 }
 
 .price-delta-note.down {
-  color: #ffb1bf;
+  color: #ff3b4d;
 }
 
 .price-delta-note.new {
@@ -1088,11 +1088,11 @@ input[type='checkbox'] {
 }
 
 .title-cell-value.up {
-  color: #89ffd0;
+  color: #18f06e;
 }
 
 .title-cell-value.down {
-  color: #ffb1bf;
+  color: #ff3b4d;
 }
 
 .title-cell-value.new {

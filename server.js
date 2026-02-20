@@ -1085,6 +1085,11 @@ app.post(
 app.get(
   '/api/games',
   asyncHandler(async (req, res) => {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
     const adminView = req.headers['x-admin-key'] === adminKey;
     const includeInactive = adminView && req.query.includeInactive === 'true';
     const rows = (await getGameRows(includeInactive)).map((row) => asPublicGame(row));
@@ -1096,6 +1101,11 @@ app.get(
   '/api/admin/games',
   requireAdmin,
   asyncHandler(async (req, res) => {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
     const rows = (await getGameRows(true)).map((row) => asPublicGame(row));
     res.json(rows);
   })
