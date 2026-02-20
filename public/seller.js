@@ -637,18 +637,15 @@ function renderTable() {
           .map((g) => {
             const deltaMeta = priceDeltaMeta(g);
             const rowClass = deltaMeta.className ? `delta-${deltaMeta.className}` : '';
-            const qtyInputId = `seller-qty-${g.id}`;
             return `
           <tr class="${rowClass}">
             <td class="game-title-cell seller-col-title" title="${escapeHtml(g.title)}">${renderTitleWithDelta(g, deltaMeta)}</td>
-            <td class="seller-col-condition"><span class="seller-condition-badge">CIB</span></td>
-            <td class="seller-col-price"><div class="seller-price-wrap">${renderPriceWithDelta(g, deltaMeta)}</div></td>
+            <td class="seller-col-condition">CIB</td>
+            <td class="seller-col-price">${renderPriceWithDelta(g, deltaMeta)}</td>
             <td class="seller-col-qty">
-              <label class="seller-mobile-label seller-mobile-qty-label" for="${qtyInputId}">Qty</label>
               <div class="qty-cell">
                 <input
                   class="qty-input"
-                  id="${qtyInputId}"
                   type="number"
                   min="0"
                   step="1"
