@@ -67,10 +67,20 @@ function computeGamesSignature(items) {
 }
 
 function priceDeltaMeta(game) {
-  const direction = String(game?.price_change_direction || '').toLowerCase();
   const baselineVersion = String(game?.comparison_baseline_version || '').trim();
   const previousCents = Number(game?.previous_price_cents);
   const hasPrevious = Number.isFinite(previousCents);
+  const currentCents = Math.round(Number(game?.price || 0) * 100);
+  let direction = String(game?.price_change_direction || '').toLowerCase();
+  if (direction !== 'up' && direction !== 'down' && direction !== 'same' && direction !== 'new') {
+    if (hasPrevious) {
+      direction = currentCents > previousCents ? 'up' : currentCents < previousCents ? 'down' : 'same';
+    } else if (baselineVersion) {
+      direction = 'new';
+    } else {
+      direction = 'none';
+    }
+  }
   const baselineSuffix = baselineVersion ? ` in ${baselineVersion}` : '';
 
   if (direction === 'up') {

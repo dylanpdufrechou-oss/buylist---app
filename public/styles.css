@@ -782,6 +782,46 @@ td {
   background: rgba(25, 240, 255, 0.08);
 }
 
+.buylist-table-wrap .sheet-table tbody tr.delta-up td {
+  background: rgba(96, 255, 191, 0.11);
+  color: #89ffd0;
+}
+
+.buylist-table-wrap .sheet-table tbody tr.delta-down td {
+  background: rgba(255, 123, 146, 0.12);
+  color: #ffb1bf;
+}
+
+.buylist-table-wrap .sheet-table tbody tr.delta-up:hover td {
+  background: rgba(96, 255, 191, 0.16);
+}
+
+.buylist-table-wrap .sheet-table tbody tr.delta-down:hover td {
+  background: rgba(255, 123, 146, 0.18);
+}
+
+.buylist-table-wrap .sheet-table tbody tr.delta-up input[type='number'] {
+  color: #89ffd0;
+  border-color: rgba(96, 255, 191, 0.55);
+}
+
+.buylist-table-wrap .sheet-table tbody tr.delta-down input[type='number'] {
+  color: #ffb1bf;
+  border-color: rgba(255, 123, 146, 0.65);
+}
+
+.buylist-table-wrap .sheet-table tbody tr.delta-up .add-btn.secondary {
+  color: #89ffd0;
+  border-color: rgba(96, 255, 191, 0.6);
+  background: rgba(18, 44, 45, 0.72);
+}
+
+.buylist-table-wrap .sheet-table tbody tr.delta-down .add-btn.secondary {
+  color: #ffb1bf;
+  border-color: rgba(255, 123, 146, 0.65);
+  background: rgba(57, 23, 35, 0.72);
+}
+
 .game-title-cell {
   white-space: nowrap;
   overflow: hidden;
