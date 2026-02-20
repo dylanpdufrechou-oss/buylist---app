@@ -86,8 +86,30 @@ const POSTGRES_SCHEMA_SQL = `
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
+  CREATE TABLE IF NOT EXISTS buylist_snapshots (
+    id SERIAL PRIMARY KEY,
+    version TEXT NOT NULL UNIQUE,
+    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    item_count INTEGER NOT NULL DEFAULT 0,
+    notes TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS buylist_snapshot_items (
+    id SERIAL PRIMARY KEY,
+    snapshot_id INTEGER NOT NULL REFERENCES buylist_snapshots(id),
+    game_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    platform TEXT,
+    condition_note TEXT,
+    price_cents INTEGER NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (snapshot_id, game_key)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_market_history_item_source_time
     ON market_price_history (buylist_item_id, source, captured_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_buylist_snapshot_items_snapshot
+    ON buylist_snapshot_items (snapshot_id);
 `;
 
 function currentMonthVersion() {

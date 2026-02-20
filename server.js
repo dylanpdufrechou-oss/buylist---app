@@ -296,6 +296,11 @@ function safeString(raw) {
 
 function asPublicGame(row) {
   const priceCents = Number(row.price_cents || 0);
+  const previousPriceCents = toFiniteNumber(row.previous_price_cents, null);
+  const changeCents = toFiniteNumber(row.price_change_cents, null);
+  const changePercent = toFiniteNumber(row.price_change_percent, null);
+  const priceChangeDirection = safeString(row.price_change_direction) || 'none';
+  const baselineVersion = safeString(row.comparison_baseline_version) || null;
   return {
     id: row.id,
     title: row.title,
@@ -305,6 +310,12 @@ function asPublicGame(row) {
     price: centsToMoney(priceCents),
     active: Number(row.active) === 1 || row.active === true,
     updated_at: row.updated_at,
+    previous_price_cents: previousPriceCents,
+    previous_price: previousPriceCents === null ? null : centsToMoney(previousPriceCents),
+    price_change_cents: changeCents,
+    price_change_percent: changePercent,
+    price_change_direction: priceChangeDirection,
+    comparison_baseline_version: baselineVersion,
   };
 }
 
@@ -319,6 +330,109 @@ function gameKey(title, platform, condition) {
   return `${safeString(title).toLowerCase()}|${normalizePlatform(platform).toLowerCase()}|${normalizeCondition(
     condition
   ).toLowerCase()}`;
+}
+
+function toFiniteNumber(value, fallback = null) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function formatPriceChangePercent(changeCents, previousPriceCents) {
+  const prev = toFiniteNumber(previousPriceCents, null);
+  if (prev === null || prev <= 0) return null;
+  const pct = (Number(changeCents || 0) / prev) * 100;
+  return Number(pct.toFixed(1));
+}
+
+function withPriceChangeFields(gameRow, baselineVersion, baselineMap) {
+  const row = { ...gameRow };
+  const normalizedKey = gameKey(row.title, row.platform, row.condition_note);
+  const currentCents = toFiniteNumber(row.price_cents, 0);
+
+  row.previous_price_cents = null;
+  row.previous_price = null;
+  row.price_change_cents = null;
+  row.price_change_percent = null;
+  row.price_change_direction = baselineVersion ? 'new' : 'none';
+  row.comparison_baseline_version = baselineVersion || null;
+
+  if (!baselineVersion) {
+    row.price_change_direction = 'none';
+    return row;
+  }
+
+  const previousItem = baselineMap.get(normalizedKey);
+  if (!previousItem) {
+    row.price_change_direction = 'new';
+    return row;
+  }
+
+  const previousCents = toFiniteNumber(previousItem.price_cents, null);
+  row.previous_price_cents = previousCents;
+  row.previous_price = previousCents === null ? null : centsToMoney(previousCents);
+
+  if (previousCents === null) {
+    row.price_change_direction = 'new';
+    return row;
+  }
+
+  const changeCents = currentCents - previousCents;
+  row.price_change_cents = changeCents;
+  row.price_change_percent = formatPriceChangePercent(changeCents, previousCents);
+  row.price_change_direction = changeCents > 0 ? 'up' : changeCents < 0 ? 'down' : 'same';
+  return row;
+}
+
+async function getSnapshotVersionMetadata(currentBuylistVersion) {
+  const lastPublished = await db.get(
+    `SELECT id, version, published_at, item_count
+     FROM buylist_snapshots
+     ORDER BY version DESC, id DESC
+     LIMIT 1`
+  );
+
+  const baseline = await db.get(
+    `SELECT id, version, published_at, item_count
+     FROM buylist_snapshots
+     WHERE version < ?
+     ORDER BY version DESC, id DESC
+     LIMIT 1`,
+    [currentBuylistVersion]
+  );
+
+  return {
+    lastPublished: lastPublished || null,
+    baseline: baseline || null,
+  };
+}
+
+async function getPriceComparisonContext(currentBuylistVersion) {
+  const { baseline } = await getSnapshotVersionMetadata(currentBuylistVersion);
+  if (!baseline || !baseline.id) {
+    return {
+      baselineVersion: null,
+      baselineMap: new Map(),
+    };
+  }
+
+  const rows = await db.all(
+    `SELECT game_key, price_cents
+     FROM buylist_snapshot_items
+     WHERE snapshot_id = ?`,
+    [baseline.id]
+  );
+
+  const baselineMap = new Map();
+  for (const row of rows) {
+    baselineMap.set(String(row.game_key || ''), {
+      price_cents: toFiniteNumber(row.price_cents, null),
+    });
+  }
+
+  return {
+    baselineVersion: baseline.version || null,
+    baselineMap,
+  };
 }
 
 function splitCsvLineSimple(line) {
@@ -470,7 +584,12 @@ async function getGameRows(includeInactive) {
        WHERE active = 1
        ORDER BY title ASC`;
 
-  return db.all(sql);
+  const rows = await db.all(sql);
+  const currentBuylistVersion = normalizeBuylistVersion(
+    await getSettingValue('current_buylist_version', currentMonthVersion())
+  );
+  const comparison = await getPriceComparisonContext(currentBuylistVersion);
+  return rows.map((row) => withPriceChangeFields(row, comparison.baselineVersion, comparison.baselineMap));
 }
 
 const SQLITE_SCHEMA_SQL = `
@@ -538,8 +657,31 @@ const SQLITE_SCHEMA_SQL = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS buylist_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    version TEXT NOT NULL UNIQUE,
+    published_at TEXT NOT NULL DEFAULT (datetime('now')),
+    item_count INTEGER NOT NULL DEFAULT 0,
+    notes TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS buylist_snapshot_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id INTEGER NOT NULL,
+    game_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    platform TEXT,
+    condition_note TEXT,
+    price_cents INTEGER NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY(snapshot_id) REFERENCES buylist_snapshots(id),
+    UNIQUE (snapshot_id, game_key)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_market_history_item_source_time
     ON market_price_history (buylist_item_id, source, captured_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_buylist_snapshot_items_snapshot
+    ON buylist_snapshot_items (snapshot_id);
 `;
 
 const POSTGRES_SCHEMA_SQL = `
@@ -604,8 +746,30 @@ const POSTGRES_SCHEMA_SQL = `
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
+  CREATE TABLE IF NOT EXISTS buylist_snapshots (
+    id SERIAL PRIMARY KEY,
+    version TEXT NOT NULL UNIQUE,
+    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    item_count INTEGER NOT NULL DEFAULT 0,
+    notes TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS buylist_snapshot_items (
+    id SERIAL PRIMARY KEY,
+    snapshot_id INTEGER NOT NULL REFERENCES buylist_snapshots(id),
+    game_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    platform TEXT,
+    condition_note TEXT,
+    price_cents INTEGER NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (snapshot_id, game_key)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_market_history_item_source_time
     ON market_price_history (buylist_item_id, source, captured_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_buylist_snapshot_items_snapshot
+    ON buylist_snapshot_items (snapshot_id);
 `;
 
 async function initDb() {
@@ -778,8 +942,15 @@ app.get(
     const currentBuylistVersion = normalizeBuylistVersion(
       await getSettingValue('current_buylist_version', currentMonthVersion())
     );
+    const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
+    const lastPublishedVersion = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.version : null;
+    const lastPublishedAt = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.published_at : null;
+    const comparisonBaselineVersion = snapshotMeta.baseline ? snapshotMeta.baseline.version : null;
     res.json({
       current_buylist_version: currentBuylistVersion,
+      last_published_version: lastPublishedVersion,
+      last_published_at: lastPublishedAt,
+      comparison_baseline_version: comparisonBaselineVersion,
     });
   })
 );
@@ -796,12 +967,104 @@ app.put(
       'current_buylist_version',
     ]);
 
+    const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
+    const lastPublishedVersion = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.version : null;
+    const lastPublishedAt = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.published_at : null;
+    const comparisonBaselineVersion = snapshotMeta.baseline ? snapshotMeta.baseline.version : null;
+
     res.json({
       ok: true,
       settings: {
         current_buylist_version: currentBuylistVersion,
+        last_published_version: lastPublishedVersion,
+        last_published_at: lastPublishedAt,
+        comparison_baseline_version: comparisonBaselineVersion,
       },
     });
+  })
+);
+
+app.post(
+  '/api/admin/buylist/publish',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const overwrite = Boolean(req.body && req.body.overwrite === true);
+    const currentBuylistVersion = normalizeBuylistVersion(
+      await getSettingValue('current_buylist_version', currentMonthVersion())
+    );
+    const gamesForSnapshot = await db.all(
+      `SELECT id, title, platform, condition_note, price_cents, active
+       FROM games
+       ORDER BY title ASC`
+    );
+
+    try {
+      const result = await withTransaction(async (tx) => {
+        const existing = await tx.get('SELECT id FROM buylist_snapshots WHERE version = ?', [currentBuylistVersion]);
+        if (existing && !overwrite) {
+          const error = new Error(`Snapshot for version ${currentBuylistVersion} already exists.`);
+          error.status = 409;
+          throw error;
+        }
+
+        if (existing) {
+          await tx.run('DELETE FROM buylist_snapshot_items WHERE snapshot_id = ?', [existing.id]);
+          await tx.run('DELETE FROM buylist_snapshots WHERE id = ?', [existing.id]);
+        }
+
+        const insertSnapshotSql = usingPostgres
+          ? `INSERT INTO buylist_snapshots (version, item_count, notes, published_at)
+             VALUES (?, ?, ?, datetime('now'))
+             RETURNING id`
+          : `INSERT INTO buylist_snapshots (version, item_count, notes, published_at)
+             VALUES (?, ?, ?, datetime('now'))`;
+        const snapshotInsert = await tx.run(insertSnapshotSql, [currentBuylistVersion, gamesForSnapshot.length, null]);
+        const snapshotId = Number(snapshotInsert.lastInsertRowid || 0);
+        if (!Number.isInteger(snapshotId) || snapshotId <= 0) {
+          throw new Error('Could not create snapshot.');
+        }
+
+        for (const game of gamesForSnapshot) {
+          await tx.run(
+            `INSERT INTO buylist_snapshot_items
+              (snapshot_id, game_key, title, platform, condition_note, price_cents, active)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              snapshotId,
+              gameKey(game.title, game.platform, game.condition_note),
+              String(game.title || '').trim(),
+              String(game.platform || '').trim(),
+              normalizeCondition(game.condition_note),
+              Number(game.price_cents || 0),
+              Number(game.active) === 1 ? 1 : 0,
+            ]
+          );
+        }
+
+        const snapshotInfo = await tx.get('SELECT id, published_at FROM buylist_snapshots WHERE id = ?', [snapshotId]);
+        return {
+          snapshotId,
+          publishedAt: snapshotInfo ? snapshotInfo.published_at : new Date().toISOString(),
+        };
+      });
+
+      res.json({
+        ok: true,
+        version: currentBuylistVersion,
+        snapshot_id: result.snapshotId,
+        item_count: gamesForSnapshot.length,
+        published_at: result.publishedAt,
+        overwrote: overwrite,
+      });
+    } catch (error) {
+      if (error && error.status === 409) {
+        return res.status(409).json({
+          error: error.message,
+          version: currentBuylistVersion,
+        });
+      }
+      throw error;
+    }
   })
 );
 

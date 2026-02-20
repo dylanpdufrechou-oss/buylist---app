@@ -97,8 +97,30 @@ const POSTGRES_SCHEMA_SQL = `
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
+  CREATE TABLE IF NOT EXISTS buylist_snapshots (
+    id SERIAL PRIMARY KEY,
+    version TEXT NOT NULL UNIQUE,
+    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    item_count INTEGER NOT NULL DEFAULT 0,
+    notes TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS buylist_snapshot_items (
+    id SERIAL PRIMARY KEY,
+    snapshot_id INTEGER NOT NULL REFERENCES buylist_snapshots(id),
+    game_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    platform TEXT,
+    condition_note TEXT,
+    price_cents INTEGER NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (snapshot_id, game_key)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_market_history_item_source_time
     ON market_price_history (buylist_item_id, source, captured_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_buylist_snapshot_items_snapshot
+    ON buylist_snapshot_items (snapshot_id);
 `;
 
 function currentMonthVersion() {
@@ -131,7 +153,7 @@ async function migrate() {
     await client.query('BEGIN');
     await client.query(POSTGRES_SCHEMA_SQL);
     await client.query(
-      'TRUNCATE TABLE submission_items, market_price_history, submissions, faqs, games, app_settings RESTART IDENTITY CASCADE'
+      'TRUNCATE TABLE buylist_snapshot_items, buylist_snapshots, submission_items, market_price_history, submissions, faqs, games, app_settings RESTART IDENTITY CASCADE'
     );
 
     const games = rowsFor('games');
@@ -292,11 +314,51 @@ async function migrate() {
       );
     }
 
+    const hasSnapshotTable = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'buylist_snapshots'")
+      .get();
+    if (hasSnapshotTable) {
+      const snapshots = rowsFor('buylist_snapshots');
+      for (const row of snapshots) {
+        await client.query(
+          `INSERT INTO buylist_snapshots (id, version, published_at, item_count, notes)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [row.id, row.version, row.published_at || null, Number(row.item_count || 0), row.notes || null]
+        );
+      }
+    }
+
+    const hasSnapshotItemsTable = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'buylist_snapshot_items'")
+      .get();
+    if (hasSnapshotItemsTable) {
+      const snapshotItems = rowsFor('buylist_snapshot_items');
+      for (const row of snapshotItems) {
+        await client.query(
+          `INSERT INTO buylist_snapshot_items
+            (id, snapshot_id, game_key, title, platform, condition_note, price_cents, active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            row.id,
+            row.snapshot_id,
+            row.game_key,
+            row.title,
+            row.platform || null,
+            row.condition_note || null,
+            row.price_cents,
+            Number(row.active || 0),
+          ]
+        );
+      }
+    }
+
     await resetIdSequence(client, 'games');
     await resetIdSequence(client, 'submissions');
     await resetIdSequence(client, 'submission_items');
     await resetIdSequence(client, 'faqs');
     await resetIdSequence(client, 'market_price_history');
+    await resetIdSequence(client, 'buylist_snapshots');
+    await resetIdSequence(client, 'buylist_snapshot_items');
 
     await client.query('COMMIT');
 

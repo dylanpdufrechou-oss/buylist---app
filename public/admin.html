@@ -31,9 +31,19 @@
               <p class="muted" style="margin: 0">
                 Used to lock pricing for new submissions (example: 2026-02)
               </p>
+              <div id="buylistPublishMeta" class="buylist-publish-meta">
+                <p class="muted" style="margin: 0">
+                  Last published: <strong id="lastPublishedVersion">-</strong>
+                  <span id="lastPublishedAtWrap" style="display: inline">(<span id="lastPublishedAt">-</span>)</span>
+                </p>
+                <p class="muted" style="margin: 0">
+                  Comparison baseline: <strong id="comparisonBaselineVersion">None</strong>
+                </p>
+              </div>
             </div>
-            <div class="row-actions" style="align-items: end">
+            <div class="row-actions buylist-publish-actions" style="align-items: end">
               <button id="saveBuylistVersion" type="button">Save Version</button>
+              <button id="publishBuylistSnapshot" type="button" class="secondary">Publish Version Snapshot</button>
             </div>
           </div>
         </section>
@@ -91,14 +101,21 @@
               <select id="gamesFilterCondition">
                 <option value="all">All Conditions</option>
               </select>
-              <select id="gamesFilterActive">
-                <option value="all">All Statuses</option>
-                <option value="active">Active only</option>
-                <option value="inactive">Inactive only</option>
-              </select>
-              <input id="gamesFilterPriceMin" type="number" min="0" step="0.01" placeholder="Min $" />
-              <input id="gamesFilterPriceMax" type="number" min="0" step="0.01" placeholder="Max $" />
-              <button id="clearGameFilters" type="button" class="secondary">Clear Filters</button>
+            <select id="gamesFilterActive">
+              <option value="all">All Statuses</option>
+              <option value="active">Active only</option>
+              <option value="inactive">Inactive only</option>
+            </select>
+            <select id="gamesFilterChange">
+              <option value="all">All Changes</option>
+              <option value="buffs">Buffs only</option>
+              <option value="nerfs">Nerfs only</option>
+              <option value="unchanged">Unchanged</option>
+              <option value="new">New</option>
+            </select>
+            <input id="gamesFilterPriceMin" type="number" min="0" step="0.01" placeholder="Min $" />
+            <input id="gamesFilterPriceMax" type="number" min="0" step="0.01" placeholder="Max $" />
+            <button id="clearGameFilters" type="button" class="secondary">Clear Filters</button>
             </div>
             <div id="gamesFilterCount" class="games-filter-count muted">Showing 0 of 0</div>
           </div>

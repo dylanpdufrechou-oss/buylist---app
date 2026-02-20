@@ -893,9 +893,96 @@ input[type='checkbox'] {
   gap: 0.45rem;
 }
 
+.buylist-publish-meta {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+
+.buylist-publish-actions {
+  justify-content: flex-end;
+}
+
+.games-table tr.price-up td {
+  background: rgba(96, 255, 191, 0.09);
+}
+
+.games-table tr.price-down td {
+  background: rgba(255, 123, 146, 0.1);
+}
+
+.games-table tr.price-new td {
+  background: rgba(159, 215, 255, 0.08);
+}
+
+.games-table tr.price-same td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .games-table tr.row-dirty td {
   background: rgba(255, 228, 91, 0.12);
   box-shadow: inset 0 0 0 1px rgba(255, 216, 102, 0.45);
+}
+
+.price-cell-wrap {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.price-change-note {
+  font-size: 0.73rem;
+  line-height: 1.2;
+  color: var(--ink-dim);
+}
+
+.price-change-note.up {
+  color: #89ffd0;
+}
+
+.price-change-note.down {
+  color: #ffb1bf;
+}
+
+.price-change-note.new {
+  color: #b7e7ff;
+}
+
+.price-change-note.same {
+  color: #c7d7ff;
+}
+
+.price-cell-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.price-cell-value.up {
+  color: #89ffd0;
+}
+
+.price-cell-value.down {
+  color: #ffb1bf;
+}
+
+.price-cell-value.new {
+  color: #cde8ff;
+}
+
+.price-delta-arrow {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.price-delta-tag {
+  font-size: 0.66rem;
+  line-height: 1;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.11rem 0.33rem;
+  color: #dfe9ff;
 }
 
 .save-changes-bar {

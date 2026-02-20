@@ -5,6 +5,11 @@ const adminMessage = document.getElementById('adminMessage');
 
 const currentBuylistVersionInput = document.getElementById('currentBuylistVersion');
 const saveBuylistVersionBtn = document.getElementById('saveBuylistVersion');
+const publishBuylistSnapshotBtn = document.getElementById('publishBuylistSnapshot');
+const lastPublishedVersionEl = document.getElementById('lastPublishedVersion');
+const lastPublishedAtEl = document.getElementById('lastPublishedAt');
+const comparisonBaselineVersionEl = document.getElementById('comparisonBaselineVersion');
+const lastPublishedAtWrap = document.getElementById('lastPublishedAtWrap');
 
 const addGameForm = document.getElementById('addGameForm');
 const gamesWrap = document.getElementById('gamesWrap');
@@ -23,6 +28,7 @@ const gamesSearchInput = document.getElementById('gamesSearch');
 const gamesFilterPlatformInput = document.getElementById('gamesFilterPlatform');
 const gamesFilterConditionInput = document.getElementById('gamesFilterCondition');
 const gamesFilterActiveInput = document.getElementById('gamesFilterActive');
+const gamesFilterChangeInput = document.getElementById('gamesFilterChange');
 const gamesFilterPriceMinInput = document.getElementById('gamesFilterPriceMin');
 const gamesFilterPriceMaxInput = document.getElementById('gamesFilterPriceMax');
 const clearGameFiltersBtn = document.getElementById('clearGameFilters');
@@ -119,6 +125,7 @@ const gameFilters = {
   platform: 'all',
   condition: 'all',
   active: 'all',
+  change: 'all',
   minPrice: '',
   maxPrice: '',
 };
@@ -134,6 +141,12 @@ let submissionsState = {
 };
 let runtimeInfo = { isVercel: false, ephemeralStorage: false, persistentStorage: true, dbProvider: 'sqlite' };
 let hasAttemptedEphemeralRestore = false;
+let adminSettings = {
+  current_buylist_version: '',
+  last_published_version: null,
+  last_published_at: null,
+  comparison_baseline_version: null,
+};
 
 function escapeHtml(str) {
   return String(str || '')
@@ -167,6 +180,103 @@ function showToast(text, type = 'ok') {
 
 function money(price) {
   return `$${Number(price).toFixed(2)}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return '-';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return String(value);
+  return dt.toLocaleString();
+}
+
+function formatSignedMoneyFromCents(cents) {
+  const amount = Number(cents || 0) / 100;
+  const abs = Math.abs(amount).toFixed(2);
+  return `${amount >= 0 ? '+' : '-'}$${abs}`;
+}
+
+function normalizeChangeDirection(rawDirection) {
+  const direction = String(rawDirection || '').toLowerCase();
+  if (direction === 'up' || direction === 'down' || direction === 'same' || direction === 'new') return direction;
+  return 'none';
+}
+
+function getPriceChangeMeta(draft) {
+  const currentPriceCents = Math.round(Number(draft.price || 0) * 100);
+  const previousPriceCents =
+    draft.previous_price_cents === null || draft.previous_price_cents === undefined
+      ? null
+      : Number(draft.previous_price_cents);
+
+  const baselineVersion = String(draft.comparison_baseline_version || '').trim();
+  if (!baselineVersion) {
+    return {
+      direction: 'none',
+      rowClass: '',
+      noteClass: 'none',
+      noteText: '',
+      tooltip: '',
+    };
+  }
+
+  if (previousPriceCents === null || !Number.isFinite(previousPriceCents)) {
+    return {
+      direction: 'new',
+      rowClass: 'price-new',
+      noteClass: 'new',
+      noteText: 'New this version',
+      tooltip: `No prior price in ${baselineVersion}`,
+    };
+  }
+
+  const changeCents = currentPriceCents - previousPriceCents;
+  const changePercent =
+    previousPriceCents > 0 ? Number(((changeCents / previousPriceCents) * 100).toFixed(1)) : null;
+  if (changeCents > 0) {
+    return {
+      direction: 'up',
+      rowClass: 'price-up',
+      noteClass: 'up',
+      noteText: `▲ ${formatSignedMoneyFromCents(changeCents)}${
+        changePercent === null ? '' : ` (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(1)}%)`
+      }`,
+      tooltip: `Was ${money(previousPriceCents / 100)} in ${baselineVersion}`,
+    };
+  }
+  if (changeCents < 0) {
+    return {
+      direction: 'down',
+      rowClass: 'price-down',
+      noteClass: 'down',
+      noteText: `▼ ${formatSignedMoneyFromCents(changeCents)}${
+        changePercent === null ? '' : ` (${changePercent.toFixed(1)}%)`
+      }`,
+      tooltip: `Was ${money(previousPriceCents / 100)} in ${baselineVersion}`,
+    };
+  }
+
+  return {
+    direction: 'same',
+    rowClass: 'price-same',
+    noteClass: 'same',
+    noteText: 'No change',
+    tooltip: `Same as ${baselineVersion}`,
+  };
+}
+
+function renderPublishMeta() {
+  if (!lastPublishedVersionEl || !comparisonBaselineVersionEl) return;
+  const lastVersion = adminSettings.last_published_version || '-';
+  const baselineVersion = adminSettings.comparison_baseline_version || 'None';
+  lastPublishedVersionEl.textContent = lastVersion;
+  comparisonBaselineVersionEl.textContent = baselineVersion;
+
+  if (lastPublishedAtEl) {
+    lastPublishedAtEl.textContent = adminSettings.last_published_at ? formatDateTime(adminSettings.last_published_at) : '-';
+  }
+  if (lastPublishedAtWrap) {
+    lastPublishedAtWrap.style.display = adminSettings.last_published_version ? 'inline' : 'none';
+  }
 }
 
 function renderPlatformSelect(id, selectedValue) {
@@ -234,6 +344,21 @@ function gameToDraft(game) {
     condition_note: normalizeConditionValue(game.condition_note),
     price: Number(game.price || 0),
     active: Boolean(game.active),
+    previous_price_cents:
+      game.previous_price_cents === null || game.previous_price_cents === undefined
+        ? null
+        : Number(game.previous_price_cents),
+    previous_price: game.previous_price ?? null,
+    price_change_cents:
+      game.price_change_cents === null || game.price_change_cents === undefined
+        ? null
+        : Number(game.price_change_cents),
+    price_change_percent:
+      game.price_change_percent === null || game.price_change_percent === undefined
+        ? null
+        : Number(game.price_change_percent),
+    price_change_direction: String(game.price_change_direction || 'none'),
+    comparison_baseline_version: game.comparison_baseline_version || null,
     deleted: false,
   };
 }
@@ -457,6 +582,7 @@ function readGameFiltersFromInputs() {
   gameFilters.platform = String(gamesFilterPlatformInput?.value || 'all');
   gameFilters.condition = String(gamesFilterConditionInput?.value || 'all');
   gameFilters.active = String(gamesFilterActiveInput?.value || 'all');
+  gameFilters.change = String(gamesFilterChangeInput?.value || 'all');
   gameFilters.minPrice = String(gamesFilterPriceMinInput?.value || '').trim();
   gameFilters.maxPrice = String(gamesFilterPriceMaxInput?.value || '').trim();
 }
@@ -466,6 +592,7 @@ function clearGameFilters() {
   if (gamesFilterPlatformInput) gamesFilterPlatformInput.value = 'all';
   if (gamesFilterConditionInput) gamesFilterConditionInput.value = 'all';
   if (gamesFilterActiveInput) gamesFilterActiveInput.value = 'all';
+  if (gamesFilterChangeInput) gamesFilterChangeInput.value = 'all';
   if (gamesFilterPriceMinInput) gamesFilterPriceMinInput.value = '';
   if (gamesFilterPriceMaxInput) gamesFilterPriceMaxInput.value = '';
   readGameFiltersFromInputs();
@@ -478,6 +605,13 @@ function draftMatchesFilters(draft) {
   if (gameFilters.condition !== 'all' && normalizeConditionValue(draft.condition_note) !== gameFilters.condition) return false;
   if (gameFilters.active === 'active' && !draft.active) return false;
   if (gameFilters.active === 'inactive' && draft.active) return false;
+  if (gameFilters.change !== 'all') {
+    const direction = getPriceChangeMeta(draft).direction;
+    if (gameFilters.change === 'buffs' && direction !== 'up') return false;
+    if (gameFilters.change === 'nerfs' && direction !== 'down') return false;
+    if (gameFilters.change === 'unchanged' && direction !== 'same') return false;
+    if (gameFilters.change === 'new' && direction !== 'new') return false;
+  }
 
   const min = Number(gameFilters.minPrice);
   if (gameFilters.minPrice && Number.isFinite(min) && Number(draft.price) < min) return false;
@@ -523,6 +657,10 @@ function updateSaveChangesUi() {
   }
   if (saveChangesBar) {
     saveChangesBar.classList.toggle('has-changes', count > 0);
+  }
+  if (publishBuylistSnapshotBtn) {
+    publishBuylistSnapshotBtn.disabled = count > 0;
+    publishBuylistSnapshotBtn.title = count > 0 ? 'Save changes before publishing a snapshot.' : '';
   }
 }
 
@@ -597,15 +735,30 @@ function renderGamesTable() {
           .map((draft) => {
             const id = Number(draft.id);
             const isDirty = dirtySet.has(id);
+            const changeMeta = getPriceChangeMeta(draft);
+            const rowClasses = [];
+            if (changeMeta.rowClass) rowClasses.push(changeMeta.rowClass);
+            if (isDirty) rowClasses.push('row-dirty');
             return `
-              <tr data-game-id="${id}" class="${isDirty ? 'row-dirty' : ''}">
+              <tr data-game-id="${id}" class="${rowClasses.join(' ')}">
                 <td><input type="checkbox" data-select-game-id="${id}" ${selectedGameIds.has(id) ? 'checked' : ''} /></td>
                 <td><input data-field="title" data-id="${id}" value="${escapeHtml(draft.title)}" /></td>
                 <td>${renderPlatformSelect(id, draft.platform || '')}</td>
                 <td>${renderConditionSelect(id, draft.condition_note || 'CIB')}</td>
-                <td><input data-field="price" data-id="${id}" type="number" min="0" step="0.01" value="${escapeHtml(
-                  Number.isFinite(Number(draft.price)) ? Number(draft.price).toFixed(2) : '0.00'
-                )}" style="width: 100px" /></td>
+                <td>
+                  <div class="price-cell-wrap">
+                    <input data-field="price" data-id="${id}" type="number" min="0" step="0.01" value="${escapeHtml(
+                      Number.isFinite(Number(draft.price)) ? Number(draft.price).toFixed(2) : '0.00'
+                    )}" style="width: 100px" />
+                    ${
+                      changeMeta.noteText
+                        ? `<span class="price-change-note ${changeMeta.noteClass}" title="${escapeHtml(changeMeta.tooltip)}">${escapeHtml(
+                            changeMeta.noteText
+                          )}</span>`
+                        : ''
+                    }
+                  </div>
+                </td>
                 <td>
                   <select data-field="active" data-id="${id}">
                     <option value="1" ${draft.active ? 'selected' : ''}>Yes</option>
@@ -668,27 +821,7 @@ function renderGamesTable() {
         draft.price = Number.isFinite(value) && value >= 0 ? value : 0;
       }
       if (field === 'active') draft.active = String(el.value) === '1';
-
-      if (
-        gameFilters.search ||
-        gameFilters.platform !== 'all' ||
-        gameFilters.condition !== 'all' ||
-        gameFilters.active !== 'all' ||
-        gameFilters.minPrice ||
-        gameFilters.maxPrice
-      ) {
-        renderGamesTable();
-        return;
-      }
-
-      const row = gamesWrap.querySelector(`tr[data-game-id="${id}"]`);
-      if (row) {
-        const payload = getRowPayloadFromDraft(id);
-        const original = getGameById(id);
-        row.classList.toggle('row-dirty', isRowChanged(original, payload, Boolean(draft.deleted)));
-      }
-      updateSaveChangesUi();
-      updateFilterCount();
+      renderGamesTable();
     });
   });
 
@@ -868,7 +1001,15 @@ async function loadAdminSettings() {
   const settings = await res.json();
   if (!res.ok) throw new Error(settings.error || 'Could not load settings');
 
-  currentBuylistVersionInput.value = settings.current_buylist_version || '';
+  const nextCurrentVersion = settings.current_buylist_version || '';
+  adminSettings = {
+    current_buylist_version: nextCurrentVersion,
+    last_published_version: settings.last_published_version || null,
+    last_published_at: settings.last_published_at || null,
+    comparison_baseline_version: settings.comparison_baseline_version || null,
+  };
+  currentBuylistVersionInput.value = nextCurrentVersion;
+  renderPublishMeta();
 }
 
 async function saveAdminSettings() {
@@ -884,7 +1025,50 @@ async function saveAdminSettings() {
   if (!res.ok) throw new Error(body.error || 'Could not save settings');
 
   const settings = body.settings || {};
-  currentBuylistVersionInput.value = settings.current_buylist_version || currentBuylistVersionInput.value;
+  const nextCurrentVersion = settings.current_buylist_version || currentBuylistVersionInput.value;
+  adminSettings = {
+    current_buylist_version: nextCurrentVersion,
+    last_published_version: settings.last_published_version || null,
+    last_published_at: settings.last_published_at || null,
+    comparison_baseline_version: settings.comparison_baseline_version || null,
+  };
+  currentBuylistVersionInput.value = nextCurrentVersion;
+  renderPublishMeta();
+}
+
+async function publishBuylistSnapshot(overwrite = false) {
+  if (getDirtyCount() > 0) {
+    renderNotice('Save changes before publishing a snapshot.', 'warn');
+    return;
+  }
+
+  const res = await adminFetch('/api/admin/buylist/publish', {
+    method: 'POST',
+    body: JSON.stringify({ overwrite }),
+  });
+  const body = await res.json();
+
+  if (res.status === 409 && !overwrite) {
+    const version = body?.version || currentBuylistVersionInput.value.trim();
+    const confirmed = confirm(
+      `A snapshot for ${version || 'this version'} already exists. Overwrite it with current prices?`
+    );
+    if (!confirmed) return;
+    await publishBuylistSnapshot(true);
+    return;
+  }
+
+  if (!res.ok) {
+    throw new Error(body.error || 'Could not publish buylist snapshot.');
+  }
+
+  await loadAdminSettings();
+  await loadGames();
+  const itemCount = Number(body.item_count || 0);
+  showToast('Snapshot published');
+  renderNotice(
+    `Published snapshot for ${body.version}. Captured ${itemCount} title${itemCount === 1 ? '' : 's'}.`
+  );
 }
 
 async function loadGames() {
@@ -1427,10 +1611,21 @@ saveBuylistVersionBtn.addEventListener('click', async () => {
     await saveAdminSettings();
     renderNotice('Buylist version saved.');
     showToast('Saved');
+    await loadGames();
   } catch (err) {
     renderNotice(err.message, 'error');
   }
 });
+
+if (publishBuylistSnapshotBtn) {
+  publishBuylistSnapshotBtn.addEventListener('click', async () => {
+    try {
+      await publishBuylistSnapshot(false);
+    } catch (err) {
+      renderNotice(err.message, 'error');
+    }
+  });
+}
 
 addGameForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1580,6 +1775,7 @@ function bindGameFilterEvents() {
     [gamesFilterPlatformInput, 'change'],
     [gamesFilterConditionInput, 'change'],
     [gamesFilterActiveInput, 'change'],
+    [gamesFilterChangeInput, 'change'],
     [gamesFilterPriceMinInput, 'input'],
     [gamesFilterPriceMaxInput, 'input'],
   ];

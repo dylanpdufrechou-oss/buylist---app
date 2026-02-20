@@ -53,8 +53,56 @@ function asMoney(price) {
 
 function computeGamesSignature(items) {
   return items
-    .map((g) => `${g.id}|${g.title}|${g.platform || ''}|${g.price}|${g.active ? 1 : 0}`)
+    .map(
+      (g) =>
+        `${g.id}|${g.title}|${g.platform || ''}|${g.price}|${g.active ? 1 : 0}|${g.price_change_direction || ''}|${
+          g.previous_price_cents ?? ''
+        }|${g.comparison_baseline_version || ''}`
+    )
     .join('~');
+}
+
+function priceDeltaMeta(game) {
+  const direction = String(game?.price_change_direction || '').toLowerCase();
+  const baselineVersion = String(game?.comparison_baseline_version || '').trim();
+  const previousCents = Number(game?.previous_price_cents);
+  const hasPrevious = Number.isFinite(previousCents);
+  const baselineSuffix = baselineVersion ? ` in ${baselineVersion}` : '';
+
+  if (direction === 'up') {
+    return {
+      className: 'up',
+      extra: '<span class="price-delta-arrow">▲</span>',
+      tooltip: hasPrevious ? `Was ${asMoney(previousCents / 100)}${baselineSuffix}` : '',
+    };
+  }
+  if (direction === 'down') {
+    return {
+      className: 'down',
+      extra: '<span class="price-delta-arrow">▼</span>',
+      tooltip: hasPrevious ? `Was ${asMoney(previousCents / 100)}${baselineSuffix}` : '',
+    };
+  }
+  if (direction === 'new') {
+    return {
+      className: 'new',
+      extra: '<span class="price-delta-tag">New</span>',
+      tooltip: baselineVersion ? `New this version (vs ${baselineVersion})` : 'New this version',
+    };
+  }
+
+  return {
+    className: '',
+    extra: '',
+    tooltip: hasPrevious && baselineVersion ? `Same as ${asMoney(previousCents / 100)}${baselineSuffix}` : '',
+  };
+}
+
+function renderPriceWithDelta(game) {
+  const meta = priceDeltaMeta(game);
+  const titleAttr = meta.tooltip ? ` title="${escapeHtml(meta.tooltip)}"` : '';
+  const className = meta.className ? `price-cell-value ${meta.className}` : 'price-cell-value';
+  return `<span class="${className}"${titleAttr}>${asMoney(game.price)}${meta.extra}</span>`;
 }
 
 function applyGames(nextGames) {
@@ -362,7 +410,7 @@ function renderTable() {
           <tr>
             <td>${escapeHtml(g.title)}</td>
             <td>CIB</td>
-            <td>${asMoney(g.price)}</td>
+            <td>${renderPriceWithDelta(g)}</td>
             <td>
               <input
                 type="number"
