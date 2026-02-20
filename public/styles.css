@@ -626,6 +626,21 @@ h3 {
   border-color: transparent;
 }
 
+.platform-tabs.is-mobile-select {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.platform-select-label {
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+}
+
+.platform-select {
+  width: 100%;
+  min-height: 44px;
+}
+
 input,
 textarea,
 button,
@@ -1404,6 +1419,12 @@ a {
     -webkit-overflow-scrolling: touch;
   }
 
+  .platform-tabs.is-mobile-select {
+    display: grid;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
   .platform-tabs .tab-btn {
     flex: 0 0 auto;
     font-size: 0.6rem;
@@ -1466,6 +1487,54 @@ a {
 }
 
 @media (max-width: 640px) {
+  .buylist-table-wrap .sheet-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .buylist-table-wrap .sheet-table th:nth-child(4),
+  .buylist-table-wrap .sheet-table td:nth-child(4) {
+    width: 76px;
+    min-width: 76px;
+    max-width: 76px;
+    overflow: hidden;
+  }
+
+  .buylist-table-wrap .sheet-table th:nth-child(5),
+  .buylist-table-wrap .sheet-table td:nth-child(5) {
+    width: 88px;
+    min-width: 88px;
+    max-width: 88px;
+    overflow: hidden;
+  }
+
+  .buylist-table-wrap .qty-cell {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .buylist-table-wrap .qty-input,
+  .buylist-table-wrap .qty-cell input[type='number'] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 30px;
+    padding: 0.16rem 0.22rem;
+    font-size: 0.74rem;
+    box-sizing: border-box;
+  }
+
+  .buylist-table-wrap .add-btn {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 0.2rem 0.3rem;
+    font-size: 0.73rem;
+    box-sizing: border-box;
+  }
+
   .sticky-payout {
     display: none !important;
   }

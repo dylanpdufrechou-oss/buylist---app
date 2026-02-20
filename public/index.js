@@ -17,6 +17,8 @@ const BUYLIST_UPDATED_EVENT = 'buylistUpdatedAt';
 const BUYLIST_SNAPSHOT_EVENT = 'buylistSnapshot';
 const AUTO_REFRESH_MS = 15000;
 const SNAPSHOT_GRACE_MS = 5 * 60 * 1000;
+const MOBILE_PLATFORM_BREAKPOINT_QUERY = '(max-width: 640px)';
+const ALL_PLATFORMS_VALUE = '__all__';
 
 let games = [];
 const qtyMap = new Map();
@@ -37,6 +39,8 @@ let activePlatformTab = '';
 let gamesSignature = '';
 let localSnapshotUpdatedAt = 0;
 let mobileSubmitToastTimer = 0;
+const mobilePlatformMedia = window.matchMedia(MOBILE_PLATFORM_BREAKPOINT_QUERY);
+let isMobilePlatformUi = mobilePlatformMedia.matches;
 
 function escapeHtml(str) {
   return String(str || '')
@@ -245,21 +249,61 @@ function normalizePlatformForTab(raw) {
 }
 
 function matchesPlatformTab(game, tab) {
-  return Boolean(tab) && normalizePlatformForTab(game.platform) === tab;
+  if (!tab || tab === ALL_PLATFORMS_VALUE) return true;
+  return normalizePlatformForTab(game.platform) === tab;
 }
 
 function renderTabs() {
+  const countsByTab = new Map(
+    platformTabs.map((tab) => [tab, games.filter((g) => normalizePlatformForTab(g.platform) === tab).length])
+  );
+  const totalCount = games.length;
+  platformTabsWrap.classList.toggle('is-mobile-select', isMobilePlatformUi);
+
+  if (isMobilePlatformUi) {
+    platformTabsWrap.innerHTML = `
+      <label class="platform-select-label" for="platformSelectMobile">Platform</label>
+      <select id="platformSelectMobile" class="platform-select">
+        <option value="${ALL_PLATFORMS_VALUE}" ${
+      activePlatformTab === ALL_PLATFORMS_VALUE ? 'selected' : ''
+    }>All Platforms (${totalCount})</option>
+        ${platformTabs
+          .map((tab) => {
+            const count = countsByTab.get(tab) || 0;
+            return `<option value="${escapeHtml(tab)}" ${tab === activePlatformTab ? 'selected' : ''}>${escapeHtml(
+              `${tab} (${count})`
+            )}</option>`;
+          })
+          .join('')}
+      </select>
+    `;
+    const select = document.getElementById('platformSelectMobile');
+    if (select) {
+      select.addEventListener('change', () => {
+        activePlatformTab = select.value || ALL_PLATFORMS_VALUE;
+        renderTabs();
+        renderTable();
+        if (searchInput) searchInput.focus();
+      });
+    }
+    return;
+  }
+
+  if (!activePlatformTab || activePlatformTab === ALL_PLATFORMS_VALUE) {
+    activePlatformTab = platformTabs[0] || '';
+  }
+
   platformTabsWrap.innerHTML = platformTabs
     .map(
       (tab) => `
-      <button
-        type="button"
-        class="tab-btn ${tab === activePlatformTab ? 'active' : ''}"
-        data-platform-tab="${escapeHtml(tab)}"
-      >
-        ${escapeHtml(tab)}
-      </button>
-    `
+        <button
+          type="button"
+          class="tab-btn ${tab === activePlatformTab ? 'active' : ''}"
+          data-platform-tab="${escapeHtml(tab)}"
+        >
+          ${escapeHtml(tab)} (${countsByTab.get(tab) || 0})
+        </button>
+      `
     )
     .join('');
 
@@ -376,20 +420,20 @@ function renderSelectedItems() {
 
 function renderTable() {
   if (!activePlatformTab) {
-    tableMeta.textContent = 'Click a console tab to open its spreadsheet table.';
-    buylistWrap.innerHTML = '<p class="muted">No console selected yet.</p>';
-    return;
+    activePlatformTab = isMobilePlatformUi ? ALL_PLATFORMS_VALUE : platformTabs[0] || '';
+    renderTabs();
   }
 
   const q = searchInput.value.trim().toLowerCase();
+  const selectedPlatformLabel = activePlatformTab === ALL_PLATFORMS_VALUE ? 'All Platforms' : activePlatformTab;
   const filtered = games.filter((g) => {
     if (!matchesPlatformTab(g, activePlatformTab)) return false;
     return `${g.title} ${g.platform || ''}`.toLowerCase().includes(q);
   });
-  tableMeta.textContent = `${activePlatformTab} Buylist`;
+  tableMeta.textContent = `${selectedPlatformLabel} Buylist`;
 
   if (filtered.length === 0) {
-    buylistWrap.innerHTML = `<p class="muted">No matching games found for ${escapeHtml(activePlatformTab)}.</p>`;
+    buylistWrap.innerHTML = `<p class="muted">No matching games found for ${escapeHtml(selectedPlatformLabel)}.</p>`;
     return;
   }
 
@@ -561,6 +605,23 @@ document.addEventListener('visibilitychange', () => {
     loadFaqs().catch(() => {});
   }
 });
+
+function handleMobilePlatformModeChange() {
+  const nextMode = mobilePlatformMedia.matches;
+  if (nextMode === isMobilePlatformUi) return;
+  isMobilePlatformUi = nextMode;
+  if (!isMobilePlatformUi && activePlatformTab === ALL_PLATFORMS_VALUE) {
+    activePlatformTab = platformTabs[0] || '';
+  }
+  renderTabs();
+  renderTable();
+}
+
+if (mobilePlatformMedia.addEventListener) {
+  mobilePlatformMedia.addEventListener('change', handleMobilePlatformModeChange);
+} else if (mobilePlatformMedia.addListener) {
+  mobilePlatformMedia.addListener(handleMobilePlatformModeChange);
+}
 
 setInterval(() => {
   loadGames().catch(() => {});
