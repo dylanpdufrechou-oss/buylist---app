@@ -1591,6 +1591,97 @@ a {
 }
 
 @media (max-width: 640px) {
+  .buylist-table-wrap {
+    overflow-x: hidden;
+  }
+
+  .seller-buylist-table thead {
+    display: none;
+  }
+
+  .seller-buylist-table,
+  .seller-buylist-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .seller-buylist-table tbody {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .seller-buylist-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'title title'
+      'condition price'
+      'qty add';
+    gap: 0.45rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    padding: 0.6rem;
+    background: rgba(11, 19, 50, 0.72);
+    overflow: hidden;
+  }
+
+  .seller-buylist-table tbody tr td {
+    display: block;
+    border: 0;
+    padding: 0.12rem 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .seller-buylist-table .seller-col-title {
+    grid-area: title;
+    font-weight: 700;
+  }
+
+  .seller-buylist-table .seller-col-condition {
+    grid-area: condition;
+  }
+
+  .seller-buylist-table .seller-col-price {
+    grid-area: price;
+  }
+
+  .seller-buylist-table .seller-col-qty {
+    grid-area: qty;
+  }
+
+  .seller-buylist-table .seller-col-add {
+    grid-area: add;
+  }
+
+  .seller-buylist-table .game-title-cell,
+  .seller-buylist-table .price-cell-stack,
+  .seller-buylist-table .price-cell-value,
+  .seller-buylist-table .price-delta-note,
+  .seller-buylist-table .title-cell-value {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .seller-buylist-table .qty-cell {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .seller-buylist-table .qty-input,
+  .seller-buylist-table .qty-cell input[type='number'],
+  .seller-buylist-table .add-btn {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-height: 44px;
+  }
+
+  .seller-buylist-table .add-btn {
+    padding: 0.45rem 0.55rem;
+  }
+
   .buylist-table-wrap .sheet-table {
     table-layout: fixed;
     width: 100%;

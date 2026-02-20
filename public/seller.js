@@ -622,7 +622,7 @@ function renderTable() {
   }
 
   buylistWrap.innerHTML = `
-    <table class="sheet-table">
+    <table class="sheet-table seller-buylist-table">
       <thead>
         <tr>
           <th>Title</th>
@@ -639,10 +639,10 @@ function renderTable() {
             const rowClass = deltaMeta.className ? `delta-${deltaMeta.className}` : '';
             return `
           <tr class="${rowClass}">
-            <td class="game-title-cell" title="${escapeHtml(g.title)}">${renderTitleWithDelta(g, deltaMeta)}</td>
-            <td>CIB</td>
-            <td>${renderPriceWithDelta(g, deltaMeta)}</td>
-            <td>
+            <td class="game-title-cell seller-col-title" title="${escapeHtml(g.title)}">${renderTitleWithDelta(g, deltaMeta)}</td>
+            <td class="seller-col-condition">CIB</td>
+            <td class="seller-col-price">${renderPriceWithDelta(g, deltaMeta)}</td>
+            <td class="seller-col-qty">
               <div class="qty-cell">
                 <input
                   class="qty-input"
@@ -654,7 +654,7 @@ function renderTable() {
                 />
               </div>
             </td>
-            <td><button type="button" class="secondary add-btn" data-add-game-id="${g.id}">Add</button></td>
+            <td class="seller-col-add"><button type="button" class="secondary add-btn" data-add-game-id="${g.id}">Add</button></td>
           </tr>`;
           })
           .join('')}
