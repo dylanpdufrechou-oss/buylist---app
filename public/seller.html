@@ -32,7 +32,7 @@
         <a href="/" class="muted">Home</a>
       </header>
 
-      <section id="buylist-tool" class="card">
+      <section id="buylist-tool" class="card buylist-card">
         <div id="stepProgress" class="step-progress" aria-label="Progress">
           <span class="step-pill is-active" data-step="1">Step 1: Add Games</span>
           <span class="step-pill" data-step="2">Step 2: Enter Info</span>
@@ -42,6 +42,13 @@
           <div>
             <h2 style="margin: 0">Check What Your Collection Is Worth</h2>
             <p class="muted" style="margin: 0.45rem 0 0">Prices updated monthly. Lock in current rates now.</p>
+          </div>
+          <div class="density-controls" aria-label="Table density">
+            <span class="density-label muted">View:</span>
+            <button type="button" class="density-btn" id="compactToggle" data-density-mode="compact">Compact</button>
+            <button type="button" class="density-btn" id="comfortableToggle" data-density-mode="comfortable">
+              Comfortable
+            </button>
           </div>
         </div>
         <div class="tabs-and-badge">
@@ -53,11 +60,15 @@
           >
         </div>
         <div class="controls">
-          <input id="search" placeholder="Start typing your game title..." />
+          <div class="search-wrap">
+            <input id="search" placeholder="Start typing your game title..." autocomplete="off" />
+            <div id="searchSuggest" class="search-suggest is-hidden" role="listbox" aria-label="Search suggestions"></div>
+          </div>
           <button id="clearSearch" class="secondary">Clear</button>
         </div>
+        <p class="search-hint muted">Enter adds first result. Shift+Enter adds 5.</p>
         <p id="tableMeta" class="muted"></p>
-        <div id="buylistTableWrap"></div>
+        <div id="buylistTableWrap" class="buylist-table-wrap"></div>
       </section>
 
       <section id="shipmentSection" class="card is-hidden">

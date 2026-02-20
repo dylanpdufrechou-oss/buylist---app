@@ -95,7 +95,7 @@
         </div>
       </section>
 
-      <section id="buylist-tool" class="card">
+      <section id="buylist-tool" class="card buylist-card">
         <div id="stepProgress" class="step-progress" aria-label="Progress">
           <span class="step-pill is-active" data-step="1">Step 1: Add Games</span>
           <span class="step-pill" data-step="2">Step 2: Enter Info</span>
@@ -105,6 +105,13 @@
           <div>
             <h2 style="margin: 0">Check What Your Collection Is Worth</h2>
             <p class="muted" style="margin: 0.45rem 0 0">Prices updated monthly. Lock in current rates now.</p>
+          </div>
+          <div class="density-controls" aria-label="Table density">
+            <span class="density-label muted">View:</span>
+            <button type="button" class="density-btn" id="compactToggle" data-density-mode="compact">Compact</button>
+            <button type="button" class="density-btn" id="comfortableToggle" data-density-mode="comfortable">
+              Comfortable
+            </button>
           </div>
         </div>
         <div class="tabs-and-badge">
@@ -116,11 +123,15 @@
           >
         </div>
         <div class="controls">
-          <input id="search" placeholder="Start typing your game title..." />
+          <div class="search-wrap">
+            <input id="search" placeholder="Start typing your game title..." autocomplete="off" />
+            <div id="searchSuggest" class="search-suggest is-hidden" role="listbox" aria-label="Search suggestions"></div>
+          </div>
           <button id="clearSearch" class="secondary">Clear</button>
         </div>
+        <p class="search-hint muted">Enter adds first result. Shift+Enter adds 5.</p>
         <p id="tableMeta" class="muted"></p>
-        <div id="buylistTableWrap"></div>
+        <div id="buylistTableWrap" class="buylist-table-wrap"></div>
       </section>
 
       <section id="shipmentSection" class="card is-hidden">
@@ -153,50 +164,63 @@
       </section>
 
       <section id="condition-standards" class="card policy-section section-sep">
-        <p class="policy-badge">CIB Only - Strict Standards</p>
-        <h2 style="margin-top: 0">Complete In Box (CIB) Copies Only</h2>
-        <p class="policy-lead">
-          <strong>We currently accept 9/10 Complete In Box (CIB) copies only.</strong>
-        </p>
-        <p class="muted policy-lead-sub">No loose, incomplete, or reproduction copies.</p>
-
-        <div class="policy-grid">
-          <article class="policy-card">
-            <h3><span class="policy-icon" aria-hidden="true">&#128230;</span> CIB Requirements</h3>
-            <p>Each game must include:</p>
-            <ul>
-              <li>Original case</li>
-              <li>Original cover artwork insert</li>
-              <li>Original manual (if originally included)</li>
-              <li>All original inserts</li>
-              <li>Correct disc or cartridge</li>
-            </ul>
-          </article>
-
-          <article class="policy-card">
-            <h3><span class="policy-icon" aria-hidden="true">&#11088;</span> Condition Standard</h3>
-            <p>
-              Games must be clean and fully intact. No major scratches, cracks, water damage, heavy wear, or artwork
-              damage. Light shelf wear is acceptable.
+        <details id="conditionStandardsDetails" class="policy-accordion">
+          <summary class="policy-summary">
+            <span class="policy-summary-text">CIB only (9/10) - tap to view rules</span>
+            <span
+              class="policy-summary-action"
+              data-open-label="Hide CIB rules"
+              data-closed-label="View CIB rules"
+              >View CIB rules</span
+            >
+          </summary>
+          <div class="policy-accordion-content">
+            <p class="policy-badge">CIB Only - Strict Standards</p>
+            <h2 style="margin-top: 0">Complete In Box (CIB) Copies Only</h2>
+            <p class="policy-lead">
+              <strong>We currently accept 9/10 Complete In Box (CIB) copies only.</strong>
             </p>
-          </article>
+            <p class="muted policy-lead-sub">No loose, incomplete, or reproduction copies.</p>
 
-          <article class="policy-card">
-            <h3><span class="policy-icon" aria-hidden="true">&#9888;</span> Additional Requirements</h3>
-            <ul>
-              <li>Wii U and Nintendo 3DS titles must include the original white insert.</li>
-              <li>No GameStop stickers on the artwork insert (stickers on outer case are acceptable).</li>
-              <li>Reprinted or reproduction artwork is not accepted.</li>
-            </ul>
-          </article>
-        </div>
+            <div class="policy-grid">
+              <article class="policy-card">
+                <h3><span class="policy-icon" aria-hidden="true">&#128230;</span> CIB Requirements</h3>
+                <p>Each game must include:</p>
+                <ul>
+                  <li>Original case</li>
+                  <li>Original cover artwork insert</li>
+                  <li>Original manual (if originally included)</li>
+                  <li>All original inserts</li>
+                  <li>Correct disc or cartridge</li>
+                </ul>
+              </article>
 
-        <p class="policy-notice">
-          <strong>
-            All prices shown are for qualifying CIB copies only. Items that do not meet these standards may be rejected
-            or returned.
-          </strong>
-        </p>
+              <article class="policy-card">
+                <h3><span class="policy-icon" aria-hidden="true">&#11088;</span> Condition Standard</h3>
+                <p>
+                  Games must be clean and fully intact. No major scratches, cracks, water damage, heavy wear, or
+                  artwork damage. Light shelf wear is acceptable.
+                </p>
+              </article>
+
+              <article class="policy-card">
+                <h3><span class="policy-icon" aria-hidden="true">&#9888;</span> Additional Requirements</h3>
+                <ul>
+                  <li>Wii U and Nintendo 3DS titles must include the original white insert.</li>
+                  <li>No GameStop stickers on the artwork insert (stickers on outer case are acceptable).</li>
+                  <li>Reprinted or reproduction artwork is not accepted.</li>
+                </ul>
+              </article>
+            </div>
+
+            <p class="policy-notice">
+              <strong>
+                All prices shown are for qualifying CIB copies only. Items that do not meet these standards may be
+                rejected or returned.
+              </strong>
+            </p>
+          </div>
+        </details>
       </section>
 
       <section class="card policy-section section-sep">

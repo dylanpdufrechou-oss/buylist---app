@@ -2,6 +2,9 @@ const buylistWrap = document.getElementById('buylistTableWrap');
 const platformTabsWrap = document.getElementById('platformTabs');
 const searchInput = document.getElementById('search');
 const clearSearchBtn = document.getElementById('clearSearch');
+const searchSuggestWrap = document.getElementById('searchSuggest');
+const compactToggleBtn = document.getElementById('compactToggle');
+const comfortableToggleBtn = document.getElementById('comfortableToggle');
 const stickyPayout = document.getElementById('stickyPayout');
 const mobileSubmitAmount = document.getElementById('mobileSubmitAmount');
 const mobileSubmitCount = document.getElementById('mobileSubmitCount');
@@ -16,13 +19,20 @@ const tableMeta = document.getElementById('tableMeta');
 const faqListWrap = document.getElementById('faqList');
 const stepProgress = document.getElementById('stepProgress');
 const shipmentJumpLinks = document.querySelectorAll('[data-shipment-jump]');
+const conditionStandardsDetails = document.getElementById('conditionStandardsDetails');
+const conditionStandardsAction = document.querySelector('.policy-summary-action');
 
 const BUYLIST_UPDATED_EVENT = 'buylistUpdatedAt';
 const BUYLIST_SNAPSHOT_EVENT = 'buylistSnapshot';
 const AUTO_REFRESH_MS = 15000;
 const SNAPSHOT_GRACE_MS = 5 * 60 * 1000;
+const DENSITY_STORAGE_KEY = 'buylistDensityMode';
+const CONDITION_RULES_STORAGE_KEY = 'conditionRulesExpanded';
 const PRICING_LOCK_QUESTION = 'When is pricing locked in?';
 const PRICING_LOCK_ANSWER = 'Pricing is locked in once your shipment is submitted.';
+const AUTOCOMPLETE_LIMIT = 8;
+const SHIFT_ENTER_ADD_COUNT = 5;
+const MIN_TABLE_HEIGHT = 300;
 
 let games = [];
 const qtyMap = new Map();
@@ -32,6 +42,8 @@ let gamesSignature = '';
 let localSnapshotUpdatedAt = 0;
 let hasSubmittedShipment = false;
 let mobileSubmitToastTimer = 0;
+let quickAddToastTimer = 0;
+let rowHighlightTimer = 0;
 
 function escapeHtml(str) {
   return String(str || '')
@@ -61,6 +73,7 @@ function applyGames(nextGames) {
 
   games = nextGames;
   gamesSignature = nextSignature;
+  renderTabs();
   renderSelectedItems();
   renderTable();
 }
@@ -83,6 +96,22 @@ function shouldPreferSnapshot(snapshot, apiGames) {
   if (!snapshotTs) return false;
   if (Date.now() - snapshotTs > SNAPSHOT_GRACE_MS) return false;
   return computeGamesSignature(snapshot.games) !== computeGamesSignature(apiGames);
+}
+
+function readStorage(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore write failures in private mode.
+  }
 }
 
 function renderMessage(text, type = 'ok') {
@@ -171,6 +200,51 @@ function renderFaqs(rows) {
     .join('');
 }
 
+function updateDensityButtons() {
+  if (!compactToggleBtn || !comfortableToggleBtn) return;
+  const isCompact = document.body.classList.contains('compact');
+  compactToggleBtn.classList.toggle('is-active', isCompact);
+  comfortableToggleBtn.classList.toggle('is-active', !isCompact);
+}
+
+function applyDensityMode(mode) {
+  const normalized = mode === 'comfortable' ? 'comfortable' : 'compact';
+  document.body.classList.toggle('compact', normalized === 'compact');
+  document.body.classList.toggle('comfortable', normalized === 'comfortable');
+  writeStorage(DENSITY_STORAGE_KEY, normalized);
+  updateDensityButtons();
+}
+
+function initDensityMode() {
+  const saved = readStorage(DENSITY_STORAGE_KEY);
+  applyDensityMode(saved || 'compact');
+
+  if (compactToggleBtn) {
+    compactToggleBtn.addEventListener('click', () => applyDensityMode('compact'));
+  }
+  if (comfortableToggleBtn) {
+    comfortableToggleBtn.addEventListener('click', () => applyDensityMode('comfortable'));
+  }
+}
+
+function syncConditionStandardsSummary() {
+  if (!conditionStandardsDetails || !conditionStandardsAction) return;
+  const openLabel = conditionStandardsAction.getAttribute('data-open-label') || 'Hide CIB rules';
+  const closedLabel = conditionStandardsAction.getAttribute('data-closed-label') || 'View CIB rules';
+  conditionStandardsAction.textContent = conditionStandardsDetails.open ? openLabel : closedLabel;
+}
+
+function initConditionStandardsAccordion() {
+  if (!conditionStandardsDetails) return;
+  const saved = readStorage(CONDITION_RULES_STORAGE_KEY);
+  conditionStandardsDetails.open = saved === '1';
+  syncConditionStandardsSummary();
+  conditionStandardsDetails.addEventListener('toggle', () => {
+    writeStorage(CONDITION_RULES_STORAGE_KEY, conditionStandardsDetails.open ? '1' : '0');
+    syncConditionStandardsSummary();
+  });
+}
+
 function matchesPlatformTab(game, tab) {
   if (!tab) return false;
 
@@ -188,7 +262,12 @@ function matchesPlatformTab(game, tab) {
   return false;
 }
 
+function getGamesForPlatform(tab) {
+  return games.filter((g) => matchesPlatformTab(g, tab));
+}
+
 function renderTabs() {
+  const countsByTab = new Map(platformTabs.map((tab) => [tab, getGamesForPlatform(tab).length]));
   platformTabsWrap.innerHTML = platformTabs
     .map(
       (tab) => `
@@ -196,8 +275,9 @@ function renderTabs() {
         type="button"
         class="tab-btn ${tab === activePlatformTab ? 'active' : ''}"
         data-platform-tab="${escapeHtml(tab)}"
+        title="${escapeHtml(`${tab} (${countsByTab.get(tab) || 0})`)}"
       >
-        ${escapeHtml(tab)}
+        ${escapeHtml(tab)} (${countsByTab.get(tab) || 0})
       </button>
     `
     )
@@ -266,6 +346,81 @@ function showMobileSubmitToast(text) {
   }, 1800);
 }
 
+function showQuickAddToast(gameTitle, amountAdded) {
+  let toast = document.getElementById('quickAddToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'quickAddToast';
+    toast.className = 'quick-add-toast';
+    document.body.appendChild(toast);
+  }
+
+  const suffix = amountAdded > 1 ? ` (+${amountAdded})` : '';
+  toast.textContent = `Added \u2713 ${gameTitle}${suffix}`;
+  toast.classList.add('is-visible');
+  clearTimeout(quickAddToastTimer);
+  quickAddToastTimer = window.setTimeout(() => {
+    toast.classList.remove('is-visible');
+  }, 1000);
+}
+
+function focusGameRow(gameId) {
+  const row = buylistWrap.querySelector(`tr[data-row-game-id="${gameId}"]`);
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.add('is-row-highlighted');
+  clearTimeout(rowHighlightTimer);
+  rowHighlightTimer = window.setTimeout(() => {
+    row.classList.remove('is-row-highlighted');
+  }, 1200);
+}
+
+function hideSuggestions() {
+  if (!searchSuggestWrap) return;
+  searchSuggestWrap.classList.add('is-hidden');
+  searchSuggestWrap.innerHTML = '';
+}
+
+function renderSuggestions(rows) {
+  if (!searchSuggestWrap || !searchInput) return;
+  const query = searchInput.value.trim().toLowerCase();
+  if (!query || rows.length === 0) {
+    hideSuggestions();
+    return;
+  }
+
+  const topRows = rows.slice(0, AUTOCOMPLETE_LIMIT);
+  searchSuggestWrap.innerHTML = `
+    <ul class="search-suggest-list">
+      ${topRows
+        .map(
+          (g) => `
+            <li>
+              <button type="button" class="search-suggest-item" data-suggest-game-id="${g.id}" title="${escapeHtml(g.title)}">
+                <span>${escapeHtml(g.title)}</span>
+              </button>
+            </li>
+          `
+        )
+        .join('')}
+    </ul>
+  `;
+  searchSuggestWrap.classList.remove('is-hidden');
+}
+
+function syncTableViewportHeight() {
+  if (!buylistWrap) return;
+  const rect = buylistWrap.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const isMobile = window.matchMedia('(max-width: 640px)').matches;
+  const bottomOffset = isMobile ? 116 : 30;
+  const minHeight = isMobile ? 260 : MIN_TABLE_HEIGHT;
+  const maxHeight = Math.max(minHeight, Math.floor(viewportHeight * 0.82));
+  const rawHeight = Math.floor(viewportHeight - rect.top - bottomOffset);
+  const calculated = Math.max(minHeight, Math.min(maxHeight, rawHeight));
+  buylistWrap.style.maxHeight = `${calculated}px`;
+}
+
 function updateMobileSubmitBar(total, rows) {
   if (!mobileSubmitAmount) return;
   mobileSubmitAmount.textContent = asMoney(total);
@@ -277,11 +432,7 @@ function updateMobileSubmitBar(total, rows) {
 function updateShipmentVisibility(total) {
   if (!shipmentSection) return;
   const shouldShow = total > 0 || hasSubmittedShipment;
-  const wasHidden = shipmentSection.classList.contains('is-hidden');
   shipmentSection.classList.toggle('is-hidden', !shouldShow);
-  if (shouldShow && total > 0 && wasHidden) {
-    shipmentSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
 }
 
 function clearCompletedShipmentState() {
@@ -303,17 +454,21 @@ function setQty(gameId, qty, { rerenderTable = false } = {}) {
   renderSelectedItems();
 }
 
-function addQty(gameId) {
+function addQty(gameId, amount = 1) {
   const current = Number(qtyMap.get(gameId) || 0);
-  setQty(gameId, current + 1, { rerenderTable: true });
+  const increment = Math.max(1, Math.floor(Number(amount || 1)));
+  const game = games.find((g) => g.id === gameId);
+  setQty(gameId, current + increment, { rerenderTable: true });
+  if (game) {
+    showQuickAddToast(game.title, increment);
+  }
 }
 
 function getFilteredGames() {
   const q = searchInput.value.trim().toLowerCase();
-  return games.filter((g) => {
-    if (!matchesPlatformTab(g, activePlatformTab)) return false;
-    return `${g.title} ${g.platform || ''}`.toLowerCase().includes(q);
-  });
+  const platformRows = getGamesForPlatform(activePlatformTab);
+  if (!q) return platformRows;
+  return platformRows.filter((g) => String(g.title || '').toLowerCase().includes(q));
 }
 
 function getSelectionSummary() {
@@ -391,14 +546,18 @@ function renderTable() {
   if (!activePlatformTab) {
     tableMeta.textContent = 'Buylist';
     buylistWrap.innerHTML = '<p class="muted">No console tabs are configured.</p>';
+    hideSuggestions();
     return;
   }
 
+  const platformRows = getGamesForPlatform(activePlatformTab);
   const filtered = getFilteredGames();
-  tableMeta.textContent = `${activePlatformTab} Buylist`;
+  tableMeta.textContent = `Showing ${filtered.length} of ${platformRows.length} in ${activePlatformTab}`;
+  renderSuggestions(filtered);
 
   if (filtered.length === 0) {
     buylistWrap.innerHTML = `<p class="muted">No matching games found for ${escapeHtml(activePlatformTab)}.</p>`;
+    syncTableViewportHeight();
     updateTotal();
     renderSelectedItems();
     return;
@@ -419,13 +578,14 @@ function renderTable() {
         ${filtered
           .map(
             (g) => `
-          <tr>
-            <td>${escapeHtml(g.title)}</td>
+          <tr data-row-game-id="${g.id}">
+            <td class="game-title-cell" title="${escapeHtml(g.title)}">${escapeHtml(g.title)}</td>
             <td>CIB</td>
             <td>${asMoney(g.price)}</td>
             <td>
               <div class="qty-cell">
                 <input
+                  class="qty-input"
                   type="number"
                   min="0"
                   step="1"
@@ -434,7 +594,11 @@ function renderTable() {
                 />
               </div>
             </td>
-            <td><button type="button" class="secondary add-btn" data-add-game-id="${g.id}">+ Add</button></td>
+            <td>
+              <button type="button" class="secondary add-btn" data-add-game-id="${g.id}" aria-label="Add one copy">
+                +
+              </button>
+            </td>
           </tr>`
           )
           .join('')}
@@ -456,6 +620,16 @@ function renderTable() {
     });
   });
 
+  buylistWrap.querySelectorAll('tr[data-row-game-id]').forEach((row) => {
+    row.addEventListener('click', (event) => {
+      if (event.target.closest('input,button,a,select,textarea,label')) return;
+      const gameId = Number(row.getAttribute('data-row-game-id'));
+      if (!gameId) return;
+      addQty(gameId);
+    });
+  });
+
+  syncTableViewportHeight();
   updateTotal();
   renderSelectedItems();
 }
@@ -487,19 +661,53 @@ async function loadFaqs() {
   renderFaqs(rows);
 }
 
-searchInput.addEventListener('input', renderTable);
-searchInput.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter') return;
-  e.preventDefault();
-  const firstMatch = getFilteredGames()[0];
-  if (!firstMatch) return;
-  addQty(firstMatch.id);
-});
+if (searchInput) {
+  searchInput.addEventListener('input', () => {
+    renderTable();
+  });
 
-clearSearchBtn.addEventListener('click', () => {
-  searchInput.value = '';
-  renderTable();
-  searchInput.focus();
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const firstMatch = getFilteredGames()[0];
+    if (!firstMatch) return;
+    const increment = e.shiftKey ? SHIFT_ENTER_ADD_COUNT : 1;
+    addQty(firstMatch.id, increment);
+  });
+}
+
+if (searchSuggestWrap) {
+  searchSuggestWrap.addEventListener('click', (event) => {
+    const target = event.target.closest('[data-suggest-game-id]');
+    if (!target) return;
+    const gameId = Number(target.getAttribute('data-suggest-game-id'));
+    const game = games.find((row) => row.id === gameId);
+    if (!game) return;
+    if (searchInput) {
+      searchInput.value = game.title;
+      searchInput.focus();
+    }
+    renderTable();
+    hideSuggestions();
+    window.requestAnimationFrame(() => focusGameRow(gameId));
+  });
+}
+
+if (clearSearchBtn) {
+  clearSearchBtn.addEventListener('click', () => {
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.focus();
+    }
+    hideSuggestions();
+    renderTable();
+  });
+}
+
+document.addEventListener('click', (event) => {
+  if (!searchSuggestWrap || !searchInput) return;
+  const insideSearch = searchInput.contains(event.target) || searchSuggestWrap.contains(event.target);
+  if (!insideSearch) hideSuggestions();
 });
 
 shipmentJumpLinks.forEach((link) => {
@@ -583,17 +791,22 @@ form.addEventListener('submit', async (e) => {
   renderMessage(`Shipment ${body.shipment.id} submitted. Print and include the packing slip in your box.`);
 });
 
+initDensityMode();
+initConditionStandardsAccordion();
 updateTotal();
 renderSelectedItems();
+syncTableViewportHeight();
 
 loadGames()
   .then(() => {
     renderTable();
+    syncTableViewportHeight();
   })
   .catch(() => {
     renderTabs();
     updateTotal();
     renderSelectedItems();
+    syncTableViewportHeight();
     buylistWrap.innerHTML = '<p class="notice error">Could not load the buylist.</p>';
   });
 
@@ -618,8 +831,12 @@ window.addEventListener('storage', (e) => {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     Promise.all([loadGames(), loadFaqs()]).catch(() => {});
+    syncTableViewportHeight();
   }
 });
+
+window.addEventListener('resize', syncTableViewportHeight);
+window.addEventListener('scroll', syncTableViewportHeight, { passive: true });
 
 setInterval(() => {
   Promise.all([loadGames(), loadFaqs()]).catch(() => {});
