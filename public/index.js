@@ -74,8 +74,11 @@ function computeGamesSignature(items) {
 
 function priceDeltaMeta(game) {
   const baselineVersion = String(game?.comparison_baseline_version || '').trim();
-  const previousCents = Number(game?.previous_price_cents);
-  const hasPrevious = Number.isFinite(previousCents);
+  const previousRaw = game?.previous_price_cents;
+  const previousParsed = Number(previousRaw);
+  const hasPrevious =
+    previousRaw !== null && previousRaw !== undefined && previousRaw !== '' && Number.isFinite(previousParsed);
+  const previousCents = hasPrevious ? previousParsed : null;
   const currentCents = Math.round(Number(game?.price || 0) * 100);
   const changeCents = hasPrevious ? currentCents - previousCents : null;
   const changePercent = hasPrevious && previousCents > 0 ? Number(((changeCents / previousCents) * 100).toFixed(1)) : null;
