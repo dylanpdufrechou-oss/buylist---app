@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>I_BuyGames - Start Your Shipment</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="retro-theme has-mobile-submit-bar">
+    <main class="container">
+      <div id="stickyPayout" class="sticky-payout" hidden>Estimated Payout: $0.00</div>
+      <div id="mobileSubmitBar" class="mobile-submit-bar">
+        <div class="mobile-submit-meta">
+          <span class="mobile-submit-label">Estimated Payout</span>
+          <strong id="mobileSubmitAmount" class="mobile-submit-amount">$0.00</strong>
+          <span id="mobileSubmitCount" class="mobile-submit-count">0 items</span>
+        </div>
+        <button id="mobileGoToSubmit" type="button" class="mobile-submit-cta">Go To Submit</button>
+      </div>
+
+      <header class="top-nav">
+        <div>
+          <h1>I_BuyGames Buylist</h1>
+          <p class="muted" style="margin: 0.4rem 0 0">Tool-only shipment page: search games, set qty, submit.</p>
+        </div>
+        <a href="/" class="muted">Home</a>
+      </header>
+
+      <section id="buylist-tool" class="card">
+        <div id="stepProgress" class="step-progress" aria-label="Progress">
+          <span class="step-pill is-active" data-step="1">Step 1: Add Games</span>
+          <span class="step-pill" data-step="2">Step 2: Enter Info</span>
+          <span class="step-pill" data-step="3">Step 3: Print Packing Slip</span>
+        </div>
+        <div class="section-head">
+          <div>
+            <h2 style="margin: 0">Check What Your Collection Is Worth</h2>
+            <p class="muted" style="margin: 0.45rem 0 0">Prices updated monthly. Lock in current rates now.</p>
+          </div>
+        </div>
+        <div class="tabs-and-badge">
+          <div id="platformTabs" class="platform-tabs"></div>
+          <span
+            class="cib-badge"
+            title="We currently only purchase Complete In Box copies in 9/10 condition or better."
+            >CIB Only &ndash; 9/10 Condition Required</span
+          >
+        </div>
+        <div class="controls">
+          <input id="search" placeholder="Start typing your game title..." />
+          <button id="clearSearch" class="secondary">Clear</button>
+        </div>
+        <p id="tableMeta" class="muted"></p>
+        <div id="buylistTableWrap"></div>
+        <p id="marketFootnote" class="muted market-footnote is-hidden"></p>
+      </section>
+
+      <section id="shipmentSection" class="card is-hidden">
+        <h2 style="margin-top: 0">Shipment Submission</h2>
+        <p class="muted">Qty changes from the console table are tracked here automatically.</p>
+        <div class="notice warn">
+          <strong>Packing Slip Required:</strong> print and include one packing slip in every box to speed up
+          receiving and avoid delays.
+        </div>
+        <div id="selectedItemsWrap"></div>
+        <div id="message"></div>
+        <form id="submissionForm" class="grid">
+          <div class="grid two">
+            <input id="customerName" placeholder="Your name" required />
+            <input id="email" placeholder="Email" type="email" />
+          </div>
+          <div class="grid two">
+            <input id="phone" placeholder="Phone" />
+            <input id="totalPreview" disabled />
+          </div>
+          <textarea id="notes" rows="4" placeholder="Notes"></textarea>
+          <div class="trust-microcopy">
+            <p>Payments sent within 24-48 hours</p>
+            <p>Transparent pricing</p>
+            <p>U.S.-based buyer</p>
+          </div>
+          <button type="submit">Submit & Generate Packing Slip</button>
+        </form>
+        <div id="shipmentPreview"></div>
+      </section>
+
+      <div id="marketModal" class="market-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="marketModalTitle">
+        <div class="market-modal-card">
+          <div class="market-modal-head">
+            <h3 id="marketModalTitle" style="margin: 0">Market Trend</h3>
+            <button id="closeMarketModal" type="button" class="secondary">Close</button>
+          </div>
+          <p id="marketModalMeta" class="muted" style="margin: 0.35rem 0 0.7rem"></p>
+          <div id="marketChartWrap"></div>
+        </div>
+      </div>
+    </main>
+    <script src="/seller.js"></script>
+  </body>
+</html>

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>I_BuyGames Buylist</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="retro-theme has-mobile-submit-bar">
+    <main class="container">
+      <div id="stickyPayout" class="sticky-payout" hidden>Estimated Payout: $0.00</div>
+      <div id="mobileSubmitBar" class="mobile-submit-bar">
+        <div class="mobile-submit-meta">
+          <span class="mobile-submit-label">Estimated Payout</span>
+          <strong id="mobileSubmitAmount" class="mobile-submit-amount">$0.00</strong>
+          <span id="mobileSubmitCount" class="mobile-submit-count">0 items</span>
+        </div>
+        <button id="mobileGoToSubmit" type="button" class="mobile-submit-cta">Go To Submit</button>
+      </div>
+
+      <header class="top-nav">
+        <div>
+          <h1>I_BuyGames Buylist</h1>
+        </div>
+        <a href="/admin.html" class="muted">Admin</a>
+      </header>
+
+      <section class="hero-panel">
+        <p class="retro-tag">Trusted Video Game Buylist</p>
+        <h2 class="hero-title">Sell Your Video Games Fast - Get Paid Without The Hassle</h2>
+        <p class="hero-subtext">No listing. No fees. No waiting on buyers. Just search, ship, and get paid.</p>
+        <div class="hero-cta-row">
+          <a href="#buylist-tool" class="btn-link btn-primary">Start Adding Your Games</a>
+          <a href="#how-it-works" class="btn-link btn-secondary">How It Works</a>
+        </div>
+        <div class="trust-badges">
+          <span>&#10003; Fast Payment</span>
+          <span>&#10003; Bulk Welcome</span>
+          <span>&#10003; U.S. Based Buyer</span>
+          <span>&#10003; Transparent Pricing</span>
+        </div>
+      </section>
+
+      <section id="how-it-works" class="card how-works">
+        <h2 style="margin-top: 0">How It Works</h2>
+        <div class="steps-grid">
+          <article class="step-card">
+            <span class="step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2" />
+                <path d="M16 16L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              </svg>
+            </span>
+            <h3>Search Your Games</h3>
+            <p class="muted">Find your console and add quantities.</p>
+          </article>
+
+          <article class="step-card">
+            <span class="step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" stroke-width="2" />
+                <path d="M8 8H16M8 12H16M8 16H12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              </svg>
+            </span>
+            <h3>See Your Total</h3>
+            <p class="muted">Watch your payout update instantly.</p>
+          </article>
+
+          <article class="step-card">
+            <span class="step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 8L12 3L21 8V19L12 22L3 19V8Z" stroke="currentColor" stroke-width="2" />
+                <path d="M3 8L12 13L21 8" stroke="currentColor" stroke-width="2" />
+              </svg>
+            </span>
+            <h3>Ship With Packing Slip</h3>
+            <p class="muted">Print your slip and send your box.</p>
+          </article>
+
+          <article class="step-card">
+            <span class="step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M13 3L4 14H11L10 21L20 9H13L13 3Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+              </svg>
+            </span>
+            <h3>Get Paid Fast</h3>
+            <p class="muted">Payment sent within 24-48 hours after processing.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="buylist-tool" class="card">
+        <div id="stepProgress" class="step-progress" aria-label="Progress">
+          <span class="step-pill is-active" data-step="1">Step 1: Add Games</span>
+          <span class="step-pill" data-step="2">Step 2: Enter Info</span>
+          <span class="step-pill" data-step="3">Step 3: Print Packing Slip</span>
+        </div>
+        <div class="section-head">
+          <div>
+            <h2 style="margin: 0">Check What Your Collection Is Worth</h2>
+            <p class="muted" style="margin: 0.45rem 0 0">Prices updated monthly. Lock in current rates now.</p>
+          </div>
+        </div>
+        <div class="tabs-and-badge">
+          <div id="platformTabs" class="platform-tabs"></div>
+          <span
+            class="cib-badge"
+            title="We currently only purchase Complete In Box copies in 9/10 condition or better."
+            >CIB Only &ndash; 9/10 Condition Required</span
+          >
+        </div>
+        <div class="controls">
+          <input id="search" placeholder="Start typing your game title..." />
+          <button id="clearSearch" class="secondary">Clear</button>
+        </div>
+        <p id="tableMeta" class="muted"></p>
+        <div id="buylistTableWrap"></div>
+        <p id="marketFootnote" class="muted market-footnote is-hidden"></p>
+      </section>
+
+      <section id="shipmentSection" class="card is-hidden">
+        <h2 style="margin-top: 0">Shipment Submission</h2>
+        <p class="muted">Qty changes from the console table are tracked here automatically.</p>
+        <div class="notice warn">
+          <strong>Packing Slip Required:</strong> print and include one packing slip in every box to speed up
+          receiving and avoid delays.
+        </div>
+        <div id="selectedItemsWrap"></div>
+        <div id="message"></div>
+        <form id="submissionForm" class="grid">
+          <div class="grid two">
+            <input id="customerName" placeholder="Your name" required />
+            <input id="email" placeholder="Email" type="email" />
+          </div>
+          <div class="grid two">
+            <input id="phone" placeholder="Phone" />
+            <input id="totalPreview" disabled />
+          </div>
+          <textarea id="notes" rows="4" placeholder="Notes"></textarea>
+          <div class="trust-microcopy">
+            <p>Payments sent within 24-48 hours</p>
+            <p>Transparent pricing</p>
+            <p>U.S.-based buyer</p>
+          </div>
+          <button type="submit">Submit & Generate Packing Slip</button>
+        </form>
+        <div id="shipmentPreview"></div>
+      </section>
+
+      <section id="condition-standards" class="card policy-section section-sep">
+        <p class="policy-badge">CIB Only - Strict Standards</p>
+        <h2 style="margin-top: 0">Complete In Box (CIB) Copies Only</h2>
+        <p class="policy-lead">
+          <strong>We currently accept 9/10 Complete In Box (CIB) copies only.</strong>
+        </p>
+        <p class="muted policy-lead-sub">No loose, incomplete, or reproduction copies.</p>
+
+        <div class="policy-grid">
+          <article class="policy-card">
+            <h3><span class="policy-icon" aria-hidden="true">&#128230;</span> CIB Requirements</h3>
+            <p>Each game must include:</p>
+            <ul>
+              <li>Original case</li>
+              <li>Original cover artwork insert</li>
+              <li>Original manual (if originally included)</li>
+              <li>All original inserts</li>
+              <li>Correct disc or cartridge</li>
+            </ul>
+          </article>
+
+          <article class="policy-card">
+            <h3><span class="policy-icon" aria-hidden="true">&#11088;</span> Condition Standard</h3>
+            <p>
+              Games must be clean and fully intact. No major scratches, cracks, water damage, heavy wear, or artwork
+              damage. Light shelf wear is acceptable.
+            </p>
+          </article>
+
+          <article class="policy-card">
+            <h3><span class="policy-icon" aria-hidden="true">&#9888;</span> Additional Requirements</h3>
+            <ul>
+              <li>Wii U and Nintendo 3DS titles must include the original white insert.</li>
+              <li>No GameStop stickers on the artwork insert (stickers on outer case are acceptable).</li>
+              <li>Reprinted or reproduction artwork is not accepted.</li>
+            </ul>
+          </article>
+        </div>
+
+        <p class="policy-notice">
+          <strong>
+            All prices shown are for qualifying CIB copies only. Items that do not meet these standards may be rejected
+            or returned.
+          </strong>
+        </p>
+      </section>
+
+      <section class="card policy-section section-sep">
+        <h2 style="margin-top: 0">Pack Smart. Get Paid Faster.</h2>
+        <p class="policy-speed">Most orders are processed within 48 hours of arrival.</p>
+        <ul>
+          <li>Use bubble wrap to protect cases.</li>
+          <li>Do not ship loose discs.</li>
+          <li>Include your printed packing slip in every box.</li>
+          <li>Tracking is required for all shipments.</li>
+          <li>Secure contents tightly to prevent case cracking.</li>
+        </ul>
+      </section>
+
+      <section class="card policy-section section-sep">
+        <h2 style="margin-top: 0">Trusted By Collectors &amp; Resellers Nationwide</h2>
+        <ul>
+          <li>Thousands of games processed</li>
+          <li>Fast processing turnaround</li>
+          <li>Transparent pricing</li>
+          <li>Louisiana-based U.S. buyer</li>
+        </ul>
+        <div class="credibility-box">
+          <h3 style="margin-top: 0">Why Sellers Keep Using Us</h3>
+          <ul>
+            <li>No listing fees</li>
+            <li>No dealing with buyers</li>
+            <li>No returns or chargebacks</li>
+            <li>Bulk friendly</li>
+            <li>Transparent inspection process</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="card policy-section section-sep">
+        <h2 style="margin-top: 0">Who This Buylist Is For</h2>
+        <ul>
+          <li>Resellers liquidating inventory</li>
+          <li>Collectors downsizing</li>
+          <li>Store owners clearing overstock</li>
+          <li>Anyone with CIB games in excellent condition</li>
+        </ul>
+      </section>
+
+      <section class="card policy-section section-sep">
+        <h2 style="margin-top: 0">Frequently Asked Questions</h2>
+        <div id="faqList" class="faq-list"></div>
+      </section>
+
+      <section class="final-cta section-sep">
+        <h2>Ready To Turn Your Games Into Cash?</h2>
+        <p>Prices are updated monthly. Submit your shipment to lock in today's rates.</p>
+        <a href="#shipmentSection" data-shipment-jump class="btn-link btn-primary">Start Your Shipment Now</a>
+        <p class="cta-microtrust">Fast processing &#8226; Transparent inspection &#8226; U.S.-based buyer</p>
+      </section>
+
+      <div id="marketModal" class="market-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="marketModalTitle">
+        <div class="market-modal-card">
+          <div class="market-modal-head">
+            <h3 id="marketModalTitle" style="margin: 0">Market Trend</h3>
+            <button id="closeMarketModal" type="button" class="secondary">Close</button>
+          </div>
+          <p id="marketModalMeta" class="muted" style="margin: 0.35rem 0 0.7rem"></p>
+          <div id="marketChartWrap"></div>
+        </div>
+      </div>
+    </main>
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <p class="footer-name">I_BuyGames Buylist</p>
+          <p>Louisiana, USA</p>
+        </div>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="mailto:contact@ibuygames.example">Contact</a>
+          <a href="/privacy.html">Privacy Policy</a>
+          <a href="/terms.html">Terms &amp; Conditions</a>
+          <a href="#condition-standards">Condition Standards</a>
+        </nav>
+      </div>
+    </footer>
+    <script src="/seller.js"></script>
+  </body>
+</html>

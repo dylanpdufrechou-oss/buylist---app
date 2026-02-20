@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Buylist Admin</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <div>
+          <h1>Buylist Admin</h1>
+          <p class="muted">Manage titles, prices, and incoming submissions.</p>
+        </div>
+        <a href="/" class="muted">Seller Page</a>
+      </header>
+
+      <section class="card grid two">
+        <input id="adminKey" placeholder="Admin key" />
+        <button id="connect">Connect</button>
+      </section>
+
+      <div id="adminApp" style="display: none">
+        <section class="card">
+          <h2 style="margin-top: 0">Current Buylist Version</h2>
+          <div class="grid two">
+            <div class="grid">
+              <label for="currentBuylistVersion" class="muted">Current Buylist Version</label>
+              <input id="currentBuylistVersion" placeholder="YYYY-MM (example: 2026-02)" />
+              <p class="muted" style="margin: 0">
+                Used to lock pricing for new submissions (example: 2026-02)
+              </p>
+            </div>
+            <div class="row-actions" style="align-items: end">
+              <button id="saveBuylistVersion" type="button">Save Version</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 style="margin-top: 0">Add Game</h2>
+          <div id="adminMessage"></div>
+          <form id="addGameForm" class="grid two">
+            <input id="title" placeholder="Title" required />
+            <select id="platform" required>
+              <option value="">Select Platform</option>
+              <option value="Wii">Wii</option>
+              <option value="PS3">PS3</option>
+              <option value="PS2">PS2</option>
+              <option value="OG Xbox">OG Xbox</option>
+              <option value="Xbox 360">Xbox 360</option>
+              <option value="Wii U">Wii U</option>
+              <option value="3DS">3DS</option>
+              <option value="DS">DS</option>
+            </select>
+            <input value="CIB" disabled />
+            <input id="price" placeholder="Price (e.g. 19.99)" type="number" min="0" step="0.01" required />
+            <select id="active">
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+            <div class="grid two" style="grid-column: 1 / -1">
+              <input
+                id="pricechartingProductId"
+                placeholder="PriceCharting Product ID (optional)"
+                autocomplete="off"
+              />
+              <div class="row-actions">
+                <button id="searchMarketAdd" type="button" class="secondary">Search PriceCharting</button>
+                <button id="validateMarketAdd" type="button" class="secondary">Validate ID</button>
+              </div>
+            </div>
+            <div id="addMarketResults" class="muted" style="grid-column: 1 / -1"></div>
+            <button type="submit">Add</button>
+          </form>
+        </section>
+
+        <section class="card">
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem">
+            <button id="refreshGames" class="secondary">Refresh Games</button>
+            <button id="saveAllGames" class="secondary">Save All</button>
+            <button id="exportCsv" class="secondary">Export CSV</button>
+            <label class="secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.8rem; border: 1px solid var(--line); border-radius: 10px; cursor: pointer;">
+              Import CSV
+              <input id="importCsv" type="file" accept=".csv" style="display: none" />
+            </label>
+            <span class="muted">CSV header: title,platform,condition,price,active</span>
+          </div>
+          <p class="muted" style="margin-top: 0">
+            Map each title to a unique PriceCharting Product ID for market sync and payout-vs-market proof.
+          </p>
+          <div id="gamesWrap"></div>
+          <div id="rowMarketResults" style="margin-top: 0.7rem"></div>
+        </section>
+
+        <section class="card">
+          <h2 style="margin-top: 0">Market Display Settings</h2>
+          <form id="marketSettingsForm" class="grid two">
+            <label class="grid">
+              <span class="muted">Show Market Prices Publicly</span>
+              <select id="showMarketPricesPublic">
+                <option value="0">Off</option>
+                <option value="1">On</option>
+              </select>
+            </label>
+            <label class="grid">
+              <span class="muted">Show % Of Market</span>
+              <select id="showPercentOfMarket">
+                <option value="1">On</option>
+                <option value="0">Off</option>
+              </select>
+            </label>
+            <label class="grid">
+              <span class="muted">Market Update Frequency (Hours)</span>
+              <select id="marketUpdateFrequencyHours">
+                <option value="12">12</option>
+                <option value="24">24</option>
+              </select>
+            </label>
+            <div class="row-actions" style="align-items: end">
+              <button id="saveMarketSettings" type="submit">Save Settings</button>
+              <button id="runMarketSyncNow" type="button" class="secondary">Run Sync Now</button>
+            </div>
+          </form>
+          <div id="marketSettingsMessage" class="muted" style="margin-top: 0.6rem"></div>
+        </section>
+
+        <section class="card">
+          <h2 style="margin-top: 0">Submissions</h2>
+          <div class="grid submissions-filters" style="margin-bottom: 0.7rem">
+            <select id="submissionsStatusFilter">
+              <option value="All">All statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="Received">Received</option>
+              <option value="Paid">Paid</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+            <input id="submissionsSearch" placeholder="Search by submission ID, name, or email" />
+            <select id="submissionsSort">
+              <option value="newest">Sort: Newest first</option>
+              <option value="oldest">Sort: Oldest first</option>
+            </select>
+          </div>
+          <div class="row-actions" style="margin-bottom: 0.7rem">
+            <button id="applySubmissionFilters" class="secondary">Apply Filters</button>
+            <button id="clearSubmissionFilters" class="secondary">Clear</button>
+            <button id="exportFilteredSubmissionsCsv" class="secondary">Export Filtered CSV</button>
+          </div>
+          <div id="submissionsTableWrap"></div>
+          <div id="submissionsPagination" class="row-actions" style="margin-top: 0.7rem"></div>
+        </section>
+
+        <section class="card">
+          <h2 style="margin-top: 0">Homepage FAQ Manager</h2>
+          <form id="addFaqForm" class="grid">
+            <input id="faqQuestion" placeholder="Question" required />
+            <textarea id="faqAnswer" rows="3" placeholder="Answer" required></textarea>
+            <div class="grid two">
+              <input id="faqSortOrder" type="number" value="0" />
+              <select id="faqActive">
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </div>
+            <button type="submit">Add FAQ</button>
+          </form>
+          <div id="faqWrap" style="margin-top: 0.75rem"></div>
+        </section>
+      </div>
+    </main>
+    <div id="submissionDetailModal" class="admin-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="submissionDetailTitle">
+      <div class="admin-modal-card">
+        <div class="admin-modal-head">
+          <h2 id="submissionDetailTitle" style="margin: 0">Submission Detail</h2>
+          <button id="closeSubmissionDetail" type="button" class="secondary">Close</button>
+        </div>
+        <div id="submissionDetailBody"></div>
+      </div>
+    </div>
+    <div id="toastContainer" class="toast-container"></div>
+    <script src="/admin.js"></script>
+  </body>
+</html>

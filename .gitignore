@@ -1,0 +1,4 @@
+node_modules/
+data/buylist.db
+data/buylist.db-*
+.env
