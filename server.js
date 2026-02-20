@@ -3,38 +3,222 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const adminKey = process.env.ADMIN_KEY || 'change-this-admin-key';
 const isVercel = process.env.VERCEL === '1';
-
+const configuredProvider = String(process.env.DB_PROVIDER || '').trim().toLowerCase();
+const dbProvider =
+  configuredProvider === 'postgres' || (!configuredProvider && process.env.DATABASE_URL) ? 'postgres' : 'sqlite';
+const usingPostgres = dbProvider === 'postgres';
 const dataDir = process.env.DATA_DIR || (isVercel ? '/tmp' : path.join(__dirname, 'data'));
-const isEphemeralStorage = isVercel && path.resolve(dataDir).startsWith('/tmp');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+const shouldSeedSampleData = String(process.env.SEED_SAMPLE_DATA || (usingPostgres ? 'false' : 'true')).toLowerCase() === 'true';
+
+let sqliteDb = null;
+let pgPool = null;
+
+if (usingPostgres) {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required when DB_PROVIDER=postgres.');
+  }
+
+  const sslMode = String(process.env.PGSSLMODE || '').toLowerCase();
+  pgPool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: sslMode === 'disable' ? undefined : { rejectUnauthorized: false },
+  });
+} else {
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  sqliteDb = new Database(path.join(dataDir, 'buylist.db'));
+  sqliteDb.pragma('journal_mode = WAL');
 }
 
-const db = new Database(path.join(dataDir, 'buylist.db'));
-db.pragma('journal_mode = WAL');
+const isEphemeralStorage = !usingPostgres && isVercel && path.resolve(dataDir).startsWith('/tmp');
+const persistentStorage = usingPostgres ? true : !isEphemeralStorage;
 
-function ensureColumn(tableName, columnName, definition) {
-  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
-  const exists = columns.some((column) => column.name === columnName);
-  if (!exists) {
-    db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`).run();
+function quoteIdentifier(name) {
+  return `"${String(name || '').replace(/"/g, '""')}"`;
+}
+
+function replaceSqliteNowFn(sql) {
+  if (!usingPostgres) return sql;
+  return String(sql).replace(/datetime\('now'\)/gi, 'NOW()');
+}
+
+function convertQuestionParams(sql, params) {
+  if (!usingPostgres) {
+    return {
+      text: sql,
+      values: params,
+    };
+  }
+
+  let position = 0;
+  let text = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const ch = sql[i];
+    const next = sql[i + 1];
+
+    if (ch === "'" && !inDoubleQuote) {
+      text += ch;
+      if (inSingleQuote && next === "'") {
+        text += next;
+        i += 1;
+      } else {
+        inSingleQuote = !inSingleQuote;
+      }
+      continue;
+    }
+
+    if (ch === '"' && !inSingleQuote) {
+      text += ch;
+      if (inDoubleQuote && next === '"') {
+        text += next;
+        i += 1;
+      } else {
+        inDoubleQuote = !inDoubleQuote;
+      }
+      continue;
+    }
+
+    if (ch === '?' && !inSingleQuote && !inDoubleQuote) {
+      position += 1;
+      text += `$${position}`;
+      continue;
+    }
+
+    text += ch;
+  }
+
+  return { text, values: params };
+}
+
+function createDbRunner(client = null) {
+  async function all(sql, params = []) {
+    const normalizedSql = replaceSqliteNowFn(sql);
+    if (!usingPostgres) {
+      return sqliteDb.prepare(normalizedSql).all(...params);
+    }
+
+    const { text, values } = convertQuestionParams(normalizedSql, params);
+    const result = await (client || pgPool).query(text, values);
+    return result.rows;
+  }
+
+  async function get(sql, params = []) {
+    const rows = await all(sql, params);
+    return rows[0] || null;
+  }
+
+  async function run(sql, params = []) {
+    const normalizedSql = replaceSqliteNowFn(sql);
+    if (!usingPostgres) {
+      const info = sqliteDb.prepare(normalizedSql).run(...params);
+      return {
+        changes: Number(info.changes || 0),
+        lastInsertRowid: info.lastInsertRowid === undefined ? null : Number(info.lastInsertRowid),
+      };
+    }
+
+    const { text, values } = convertQuestionParams(normalizedSql, params);
+    const result = await (client || pgPool).query(text, values);
+    const first = result.rows && result.rows[0] ? result.rows[0] : null;
+    const rowId = first && Object.prototype.hasOwnProperty.call(first, 'id') ? Number(first.id) : null;
+    return {
+      changes: Number(result.rowCount || 0),
+      lastInsertRowid: Number.isFinite(rowId) ? rowId : null,
+    };
+  }
+
+  async function exec(sql) {
+    const normalizedSql = replaceSqliteNowFn(sql);
+    if (!usingPostgres) {
+      sqliteDb.exec(normalizedSql);
+      return;
+    }
+    await (client || pgPool).query(normalizedSql);
+  }
+
+  return { all, get, run, exec };
+}
+
+const db = createDbRunner();
+
+async function withTransaction(work) {
+  if (!usingPostgres) {
+    sqliteDb.exec('BEGIN');
+    try {
+      const result = await work(db);
+      sqliteDb.exec('COMMIT');
+      return result;
+    } catch (error) {
+      try {
+        sqliteDb.exec('ROLLBACK');
+      } catch {
+        // ignore rollback error
+      }
+      throw error;
+    }
+  }
+
+  const client = await pgPool.connect();
+  const txDb = createDbRunner(client);
+  try {
+    await client.query('BEGIN');
+    const result = await work(txDb);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // ignore rollback error
+    }
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
-function setDefaultSetting(key, value) {
-  db.prepare('INSERT OR IGNORE INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))').run(
-    key,
-    String(value)
+async function ensureColumn(tableName, columnName, definition) {
+  if (!usingPostgres) {
+    const columns = await db.all(`PRAGMA table_info(${tableName})`);
+    const exists = columns.some((column) => column.name === columnName);
+    if (!exists) {
+      await db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+    }
+    return;
+  }
+
+  const exists = await db.get(
+    `SELECT 1 AS present
+     FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = ? AND column_name = ?`,
+    [tableName, columnName]
+  );
+  if (!exists) {
+    await db.run(`ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteIdentifier(columnName)} ${definition}`);
+  }
+}
+
+async function setDefaultSetting(key, value) {
+  await db.run(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT (key) DO NOTHING`,
+    [key, String(value)]
   );
 }
 
-function getSettingValue(key, fallback) {
-  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key);
+async function getSettingValue(key, fallback) {
+  const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [key]);
   return row ? row.value : fallback;
 }
 
@@ -111,14 +295,15 @@ function safeString(raw) {
 }
 
 function asPublicGame(row) {
+  const priceCents = Number(row.price_cents || 0);
   return {
     id: row.id,
     title: row.title,
     platform: row.platform,
     condition_note: normalizeCondition(row.condition_note),
-    price_cents: row.price_cents,
-    price: centsToMoney(row.price_cents),
-    active: Boolean(row.active),
+    price_cents: priceCents,
+    price: centsToMoney(priceCents),
+    active: Number(row.active) === 1 || row.active === true,
     updated_at: row.updated_at,
   };
 }
@@ -218,9 +403,9 @@ function parseGamesCsv(csvText) {
   return { rows, errors, expectedHeader };
 }
 
-function currentGamesByKey() {
+async function currentGamesByKey() {
   const map = new Map();
-  const rows = db.prepare('SELECT id, title, platform, condition_note FROM games').all();
+  const rows = await db.all('SELECT id, title, platform, condition_note FROM games');
   for (const row of rows) {
     const key = gameKey(row.title, row.platform, row.condition_note);
     if (!map.has(key)) map.set(key, row);
@@ -275,7 +460,7 @@ function buildGameFilterWhere(query) {
   };
 }
 
-function getGameRows(includeInactive) {
+async function getGameRows(includeInactive) {
   const sql = includeInactive
     ? `SELECT id, title, platform, condition_note, price_cents, active, updated_at
        FROM games
@@ -285,116 +470,179 @@ function getGameRows(includeInactive) {
        WHERE active = 1
        ORDER BY title ASC`;
 
-  return db.prepare(sql).all();
+  return db.all(sql);
 }
 
-function initDb() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS games (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      platform TEXT,
-      condition_note TEXT,
-      price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
-      active INTEGER NOT NULL DEFAULT 1,
-      pricecharting_product_id TEXT,
-      market_source TEXT DEFAULT 'pricecharting',
-      market_last_checked_at TEXT,
-      market_cib_price_cents INTEGER,
-      market_new_price_cents INTEGER,
-      market_loose_price_cents INTEGER,
-      market_item_url TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+const SQLITE_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS games (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    platform TEXT,
+    condition_note TEXT,
+    price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
+    active INTEGER NOT NULL DEFAULT 1,
+    pricecharting_product_id TEXT,
+    market_source TEXT DEFAULT 'pricecharting',
+    market_last_checked_at TEXT,
+    market_cib_price_cents INTEGER,
+    market_new_price_cents INTEGER,
+    market_loose_price_cents INTEGER,
+    market_item_url TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 
-    CREATE TABLE IF NOT EXISTS submissions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      customer_name TEXT NOT NULL,
-      email TEXT,
-      phone TEXT,
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+  CREATE TABLE IF NOT EXISTS submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 
-    CREATE TABLE IF NOT EXISTS submission_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      submission_id INTEGER NOT NULL,
-      game_id INTEGER NOT NULL,
-      quantity INTEGER NOT NULL CHECK (quantity > 0),
-      price_cents_at_submission INTEGER NOT NULL,
-      FOREIGN KEY(submission_id) REFERENCES submissions(id),
-      FOREIGN KEY(game_id) REFERENCES games(id)
-    );
+  CREATE TABLE IF NOT EXISTS submission_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id INTEGER NOT NULL,
+    game_id INTEGER NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    price_cents_at_submission INTEGER NOT NULL,
+    FOREIGN KEY(submission_id) REFERENCES submissions(id),
+    FOREIGN KEY(game_id) REFERENCES games(id)
+  );
 
-    CREATE TABLE IF NOT EXISTS faqs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      question TEXT NOT NULL,
-      answer TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+  CREATE TABLE IF NOT EXISTS faqs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 
-    CREATE TABLE IF NOT EXISTS market_price_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      buylist_item_id INTEGER NOT NULL,
-      source TEXT NOT NULL DEFAULT 'pricecharting',
-      captured_at TEXT NOT NULL DEFAULT (datetime('now')),
-      cib_price_cents INTEGER,
-      new_price_cents INTEGER,
-      loose_price_cents INTEGER,
-      FOREIGN KEY(buylist_item_id) REFERENCES games(id)
-    );
+  CREATE TABLE IF NOT EXISTS market_price_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    buylist_item_id INTEGER NOT NULL,
+    source TEXT NOT NULL DEFAULT 'pricecharting',
+    captured_at TEXT NOT NULL DEFAULT (datetime('now')),
+    cib_price_cents INTEGER,
+    new_price_cents INTEGER,
+    loose_price_cents INTEGER,
+    FOREIGN KEY(buylist_item_id) REFERENCES games(id)
+  );
 
-    CREATE TABLE IF NOT EXISTS app_settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 
-    CREATE INDEX IF NOT EXISTS idx_market_history_item_source_time
-      ON market_price_history (buylist_item_id, source, captured_at DESC);
-  `);
+  CREATE INDEX IF NOT EXISTS idx_market_history_item_source_time
+    ON market_price_history (buylist_item_id, source, captured_at DESC);
+`;
 
-  ensureColumn('submissions', 'updated_at', 'TEXT');
-  ensureColumn('submissions', 'status', "TEXT NOT NULL DEFAULT 'Pending'");
-  ensureColumn('submissions', 'price_version', 'TEXT');
-  ensureColumn('submissions', 'estimated_total_cents', 'INTEGER NOT NULL DEFAULT 0');
-  ensureColumn('submissions', 'internal_notes', 'TEXT');
-  ensureColumn('submission_items', 'title_at_submit', 'TEXT');
-  ensureColumn('submission_items', 'platform_at_submit', 'TEXT');
-  ensureColumn('submission_items', 'unit_price_cents_at_submit', 'INTEGER');
-  ensureColumn('submission_items', 'line_total_cents_at_submit', 'INTEGER');
+const POSTGRES_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS games (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    platform TEXT,
+    condition_note TEXT,
+    price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
+    active INTEGER NOT NULL DEFAULT 1,
+    pricecharting_product_id TEXT,
+    market_source TEXT DEFAULT 'pricecharting',
+    market_last_checked_at TIMESTAMPTZ,
+    market_cib_price_cents INTEGER,
+    market_new_price_cents INTEGER,
+    market_loose_price_cents INTEGER,
+    market_item_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
 
-  setDefaultSetting('current_buylist_version', currentMonthVersion());
+  CREATE TABLE IF NOT EXISTS submissions (
+    id SERIAL PRIMARY KEY,
+    customer_name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
 
-  const normalizePlatformsTx = db.transaction(() => {
-    const rows = db.prepare('SELECT id, platform FROM games').all();
-    const updatePlatform = db.prepare(
-      `UPDATE games
-       SET platform = ?,
-           updated_at = datetime('now')
-       WHERE id = ?`
-    );
+  CREATE TABLE IF NOT EXISTS submission_items (
+    id SERIAL PRIMARY KEY,
+    submission_id INTEGER NOT NULL REFERENCES submissions(id),
+    game_id INTEGER NOT NULL REFERENCES games(id),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    price_cents_at_submission INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS faqs (
+    id SERIAL PRIMARY KEY,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE TABLE IF NOT EXISTS market_price_history (
+    id SERIAL PRIMARY KEY,
+    buylist_item_id INTEGER NOT NULL REFERENCES games(id),
+    source TEXT NOT NULL DEFAULT 'pricecharting',
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    cib_price_cents INTEGER,
+    new_price_cents INTEGER,
+    loose_price_cents INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_market_history_item_source_time
+    ON market_price_history (buylist_item_id, source, captured_at DESC);
+`;
+
+async function initDb() {
+  await db.exec(usingPostgres ? POSTGRES_SCHEMA_SQL : SQLITE_SCHEMA_SQL);
+
+  await ensureColumn('submissions', 'updated_at', usingPostgres ? 'TIMESTAMPTZ' : 'TEXT');
+  await ensureColumn('submissions', 'status', "TEXT NOT NULL DEFAULT 'Pending'");
+  await ensureColumn('submissions', 'price_version', 'TEXT');
+  await ensureColumn('submissions', 'estimated_total_cents', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn('submissions', 'internal_notes', 'TEXT');
+  await ensureColumn('submission_items', 'title_at_submit', 'TEXT');
+  await ensureColumn('submission_items', 'platform_at_submit', 'TEXT');
+  await ensureColumn('submission_items', 'unit_price_cents_at_submit', 'INTEGER');
+  await ensureColumn('submission_items', 'line_total_cents_at_submit', 'INTEGER');
+
+  await setDefaultSetting('current_buylist_version', currentMonthVersion());
+
+  await withTransaction(async (tx) => {
+    const rows = await tx.all('SELECT id, platform FROM games');
     for (const row of rows) {
       const current = safeString(row.platform);
       const normalized = normalizePlatform(current);
       if (normalized !== current) {
-        updatePlatform.run(normalized, row.id);
+        await tx.run(
+          `UPDATE games
+           SET platform = ?,
+               updated_at = datetime('now')
+           WHERE id = ?`,
+          [normalized, row.id]
+        );
       }
     }
   });
-  normalizePlatformsTx();
 
-  const count = db.prepare('SELECT COUNT(*) AS c FROM games').get().c;
-  if (count === 0) {
-    const seed = db.prepare(
-      `INSERT INTO games
-        (title, platform, condition_note, price_cents, active)
-       VALUES (?, ?, ?, ?, 1)`
-    );
+  const countRow = await db.get('SELECT COUNT(*) AS c FROM games');
+  const gameCount = Number(countRow?.c || 0);
+  if (gameCount === 0 && shouldSeedSampleData) {
     const rows = [
       ['Wii Sports Resort', 'Wii', normalizeCondition(), 600],
       ['Metal Gear Solid 3: Subsistence', 'PS2', normalizeCondition(), 1200],
@@ -405,18 +653,21 @@ function initDb() {
       ['Pokemon Omega Ruby', '3DS', normalizeCondition(), 1600],
       ['Mario Kart DS', 'DS', normalizeCondition(), 900],
     ];
-    const tx = db.transaction((items) => {
-      for (const row of items) seed.run(...row);
+    await withTransaction(async (tx) => {
+      for (const row of rows) {
+        await tx.run(
+          `INSERT INTO games
+            (title, platform, condition_note, price_cents, active)
+           VALUES (?, ?, ?, ?, 1)`,
+          row
+        );
+      }
     });
-    tx(rows);
   }
 
-  const faqCount = db.prepare('SELECT COUNT(*) AS c FROM faqs').get().c;
+  const faqCountRow = await db.get('SELECT COUNT(*) AS c FROM faqs');
+  const faqCount = Number(faqCountRow?.c || 0);
   if (faqCount === 0) {
-    const insertFaq = db.prepare(
-      `INSERT INTO faqs (question, answer, sort_order, active, updated_at)
-       VALUES (?, ?, ?, 1, datetime('now'))`
-    );
     const defaultFaqs = [
       ['Who pays for shipping?', 'Sellers are responsible for shipping unless otherwise specified.', 1],
       [
@@ -436,13 +687,18 @@ function initDb() {
         5,
       ],
     ];
-    const txFaq = db.transaction((rows) => {
-      for (const row of rows) insertFaq.run(...row);
+    await withTransaction(async (tx) => {
+      for (const row of defaultFaqs) {
+        await tx.run(
+          `INSERT INTO faqs (question, answer, sort_order, active, updated_at)
+           VALUES (?, ?, ?, 1, datetime('now'))`,
+          row
+        );
+      }
     });
-    txFaq(defaultFaqs);
   }
 
-  db.prepare(
+  await db.run(
     `UPDATE submissions
      SET status = COALESCE(NULLIF(status, ''), 'Pending'),
          updated_at = COALESCE(updated_at, created_at, datetime('now')),
@@ -460,31 +716,53 @@ function initDb() {
              WHERE si.submission_id = submissions.id
            ),
            0
-         )`
-  ).run(currentMonthVersion());
+         )`,
+    [currentMonthVersion()]
+  );
 
-  db.prepare(
+  await db.run(
     `UPDATE submission_items
      SET unit_price_cents_at_submit = COALESCE(unit_price_cents_at_submit, price_cents_at_submission),
          line_total_cents_at_submit = COALESCE(
            line_total_cents_at_submit,
            quantity * COALESCE(unit_price_cents_at_submit, price_cents_at_submission, 0)
          )`
-  ).run();
+  );
 }
 
-initDb();
+let dbInitError = null;
+const dbInitPromise = initDb().catch((error) => {
+  dbInitError = error;
+});
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/runtime', (req, res) => {
-  res.json({
-    isVercel,
-    ephemeralStorage: isEphemeralStorage,
-    storagePath: path.resolve(dataDir),
-  });
-});
+const asyncHandler = (handler) => (req, res, next) => {
+  Promise.resolve(handler(req, res, next)).catch(next);
+};
+
+app.use(
+  '/api',
+  asyncHandler(async (req, res, next) => {
+    await dbInitPromise;
+    if (dbInitError) throw dbInitError;
+    next();
+  })
+);
+
+app.get(
+  '/api/runtime',
+  asyncHandler(async (req, res) => {
+    res.json({
+      isVercel,
+      ephemeralStorage: isEphemeralStorage,
+      persistentStorage,
+      dbProvider,
+      storagePath: usingPostgres ? 'postgres' : path.resolve(dataDir),
+    });
+  })
+);
 
 function requireAdmin(req, res, next) {
   if (req.headers['x-admin-key'] !== adminKey) {
@@ -493,50 +771,70 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-app.get('/api/admin/settings', requireAdmin, (req, res) => {
-  const currentBuylistVersion = normalizeBuylistVersion(getSettingValue('current_buylist_version', currentMonthVersion()));
-  res.json({
-    current_buylist_version: currentBuylistVersion,
-  });
-});
-
-app.put('/api/admin/settings', requireAdmin, (req, res) => {
-  const { current_buylist_version } = req.body || {};
-
-  const currentBuylistVersion = normalizeBuylistVersion(current_buylist_version);
-  db.prepare("UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = ?").run(
-    currentBuylistVersion,
-    'current_buylist_version'
-  );
-
-  res.json({
-    ok: true,
-    settings: {
+app.get(
+  '/api/admin/settings',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const currentBuylistVersion = normalizeBuylistVersion(
+      await getSettingValue('current_buylist_version', currentMonthVersion())
+    );
+    res.json({
       current_buylist_version: currentBuylistVersion,
-    },
-  });
-});
+    });
+  })
+);
 
-app.get('/api/games', (req, res) => {
-  const adminView = req.headers['x-admin-key'] === adminKey;
-  const includeInactive = adminView && req.query.includeInactive === 'true';
-  const rows = getGameRows(includeInactive).map((row) => asPublicGame(row));
-  res.json(rows);
-});
+app.put(
+  '/api/admin/settings',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { current_buylist_version } = req.body || {};
+    const currentBuylistVersion = normalizeBuylistVersion(current_buylist_version);
 
-app.get('/api/admin/games', requireAdmin, (req, res) => {
-  const rows = getGameRows(true).map((row) => asPublicGame(row));
-  res.json(rows);
-});
+    await db.run("UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = ?", [
+      currentBuylistVersion,
+      'current_buylist_version',
+    ]);
 
-app.post('/api/admin/games/import-preview', requireAdmin, (req, res) => {
+    res.json({
+      ok: true,
+      settings: {
+        current_buylist_version: currentBuylistVersion,
+      },
+    });
+  })
+);
+
+app.get(
+  '/api/games',
+  asyncHandler(async (req, res) => {
+    const adminView = req.headers['x-admin-key'] === adminKey;
+    const includeInactive = adminView && req.query.includeInactive === 'true';
+    const rows = (await getGameRows(includeInactive)).map((row) => asPublicGame(row));
+    res.json(rows);
+  })
+);
+
+app.get(
+  '/api/admin/games',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const rows = (await getGameRows(true)).map((row) => asPublicGame(row));
+    res.json(rows);
+  })
+);
+
+app.post(
+  '/api/admin/games/import-preview',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const { csv } = req.body || {};
   if (!csv || typeof csv !== 'string') {
     return res.status(400).json({ error: 'CSV content is required.' });
   }
 
   const parsed = parseGamesCsv(csv);
-  const existingMap = currentGamesByKey();
+  const existingMap = await currentGamesByKey();
   const seenKeys = new Set();
   let newRows = 0;
   let updateRows = 0;
@@ -578,9 +876,13 @@ app.post('/api/admin/games/import-preview', requireAdmin, (req, res) => {
     previewRows,
     errors: parsed.errors,
   });
-});
+  })
+);
 
-app.post('/api/admin/games/import-commit', requireAdmin, (req, res) => {
+app.post(
+  '/api/admin/games/import-commit',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const { csv, mode, skipDuplicates, stopOnError, replaceConfirm } = req.body || {};
   if (!csv || typeof csv !== 'string') {
     return res.status(400).json({ error: 'CSV content is required.' });
@@ -625,26 +927,21 @@ app.post('/api/admin/games/import-commit', requireAdmin, (req, res) => {
     dedupedRows[idx] = row;
   }
 
-  const existingMap = currentGamesByKey();
-  const insertGame = db.prepare(
-    `INSERT INTO games (title, platform, condition_note, price_cents, active, updated_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))`
-  );
-  const updateGame = db.prepare(
-    `UPDATE games
-     SET title = ?, platform = ?, condition_note = ?, price_cents = ?, active = ?, updated_at = datetime('now')
-     WHERE id = ?`
-  );
+  const existingMap = await currentGamesByKey();
 
   let inserted = 0;
   let updated = 0;
   let existingDuplicateCount = 0;
 
-  const tx = db.transaction(() => {
+  await withTransaction(async (tx) => {
     if (resolvedMode === 'replace') {
-      db.prepare('DELETE FROM games').run();
+      await tx.run('DELETE FROM games');
       for (const row of dedupedRows) {
-        insertGame.run(row.title, row.platform, row.condition, row.priceCents, row.active);
+        await tx.run(
+          `INSERT INTO games (title, platform, condition_note, price_cents, active, updated_at)
+           VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+          [row.title, row.platform, row.condition, row.priceCents, row.active]
+        );
         inserted += 1;
       }
       return;
@@ -662,16 +959,23 @@ app.post('/api/admin/games/import-commit', requireAdmin, (req, res) => {
           skipped += 1;
           continue;
         }
-        updateGame.run(row.title, row.platform, row.condition, row.priceCents, row.active, existing.id);
+        await tx.run(
+          `UPDATE games
+           SET title = ?, platform = ?, condition_note = ?, price_cents = ?, active = ?, updated_at = datetime('now')
+           WHERE id = ?`,
+          [row.title, row.platform, row.condition, row.priceCents, row.active, existing.id]
+        );
         updated += 1;
         continue;
       }
-      insertGame.run(row.title, row.platform, row.condition, row.priceCents, row.active);
+      await tx.run(
+        `INSERT INTO games (title, platform, condition_note, price_cents, active, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+        [row.title, row.platform, row.condition, row.priceCents, row.active]
+      );
       inserted += 1;
     }
   });
-
-  tx();
 
   res.json({
     ok: true,
@@ -683,26 +987,31 @@ app.post('/api/admin/games/import-commit', requireAdmin, (req, res) => {
     errors: parsed.errors.length,
     validationErrors: parsed.errors,
   });
-});
+  })
+);
 
-app.get('/api/faqs', (req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT id, question, answer, sort_order, active
-       FROM faqs
-       WHERE active = 1
-       ORDER BY sort_order ASC, id ASC`
-    )
-    .all()
-    .map((r) => ({
+app.get(
+  '/api/faqs',
+  asyncHandler(async (req, res) => {
+    const rows = (
+      await db.all(
+        `SELECT id, question, answer, sort_order, active
+         FROM faqs
+         WHERE active = 1
+         ORDER BY sort_order ASC, id ASC`
+      )
+    ).map((r) => ({
       ...r,
       active: Boolean(r.active),
     }));
 
-  res.json(rows);
-});
+    res.json(rows);
+  })
+);
 
-app.post('/api/submissions', (req, res) => {
+app.post(
+  '/api/submissions',
+  asyncHandler(async (req, res) => {
   const { customerName, email, phone, notes, items } = req.body || {};
 
   if (!customerName || typeof customerName !== 'string') {
@@ -718,77 +1027,84 @@ app.post('/api/submissions', (req, res) => {
     }
   }
 
-  const priceVersion = normalizeBuylistVersion(getSettingValue('current_buylist_version', currentMonthVersion()));
-
-  const insertSubmission = db.prepare(
-    `INSERT INTO submissions
-      (customer_name, email, phone, notes, created_at, updated_at, status, price_version, estimated_total_cents, internal_notes)
-     VALUES (?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?)`
+  const priceVersion = normalizeBuylistVersion(
+    await getSettingValue('current_buylist_version', currentMonthVersion())
   );
-  const insertItem = db.prepare(
-    `INSERT INTO submission_items
-      (submission_id, game_id, quantity, price_cents_at_submission, title_at_submit, platform_at_submit, unit_price_cents_at_submit, line_total_cents_at_submit)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  );
-  const getGame = db.prepare('SELECT id, title, platform, price_cents, active FROM games WHERE id = ?');
-
-  const tx = db.transaction(() => {
-    const lockedItems = [];
-    let estimatedTotalCents = 0;
-
-    for (const item of items) {
-      const game = getGame.get(item.gameId);
-      if (!game || game.active !== 1) {
-        throw new Error(`Game ${item.gameId} is unavailable`);
-      }
-
-      const unitPriceCents = Number(game.price_cents);
-      const lineTotalCents = unitPriceCents * item.quantity;
-      estimatedTotalCents += lineTotalCents;
-      lockedItems.push({
-        gameId: game.id,
-        title: game.title,
-        platform: game.platform || '',
-        quantity: item.quantity,
-        unitPriceCents,
-        lineTotalCents,
-      });
-    }
-
-    const submission = insertSubmission.run(
-      customerName.trim(),
-      (email || '').trim(),
-      (phone || '').trim(),
-      (notes || '').trim(),
-      'Pending',
-      priceVersion,
-      estimatedTotalCents,
-      ''
-    );
-    const submissionId = Number(submission.lastInsertRowid);
-
-    for (const item of lockedItems) {
-      insertItem.run(
-        submissionId,
-        item.gameId,
-        item.quantity,
-        item.unitPriceCents,
-        item.title,
-        item.platform,
-        item.unitPriceCents,
-        item.lineTotalCents
-      );
-    }
-
-    return {
-      submissionId,
-      estimatedTotalCents,
-      lockedItems,
-    };
-  });
 
   try {
-    const created = tx();
+    const created = await withTransaction(async (tx) => {
+      const lockedItems = [];
+      let estimatedTotalCents = 0;
+
+      for (const item of items) {
+        const game = await tx.get('SELECT id, title, platform, price_cents, active FROM games WHERE id = ?', [
+          item.gameId,
+        ]);
+        if (!game || Number(game.active) !== 1) {
+          throw new Error(`Game ${item.gameId} is unavailable`);
+        }
+
+        const unitPriceCents = Number(game.price_cents);
+        const lineTotalCents = unitPriceCents * item.quantity;
+        estimatedTotalCents += lineTotalCents;
+        lockedItems.push({
+          gameId: game.id,
+          title: game.title,
+          platform: game.platform || '',
+          quantity: item.quantity,
+          unitPriceCents,
+          lineTotalCents,
+        });
+      }
+
+      const insertSubmissionSql = usingPostgres
+        ? `INSERT INTO submissions
+            (customer_name, email, phone, notes, created_at, updated_at, status, price_version, estimated_total_cents, internal_notes)
+           VALUES (?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?)
+           RETURNING id`
+        : `INSERT INTO submissions
+            (customer_name, email, phone, notes, created_at, updated_at, status, price_version, estimated_total_cents, internal_notes)
+           VALUES (?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?)`;
+      const submission = await tx.run(insertSubmissionSql, [
+        customerName.trim(),
+        (email || '').trim(),
+        (phone || '').trim(),
+        (notes || '').trim(),
+        'Pending',
+        priceVersion,
+        estimatedTotalCents,
+        '',
+      ]);
+      const submissionId = Number(submission.lastInsertRowid || 0);
+      if (!Number.isInteger(submissionId) || submissionId <= 0) {
+        throw new Error('Could not create submission ID');
+      }
+
+      for (const item of lockedItems) {
+        await tx.run(
+          `INSERT INTO submission_items
+            (submission_id, game_id, quantity, price_cents_at_submission, title_at_submit, platform_at_submit, unit_price_cents_at_submit, line_total_cents_at_submit)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            submissionId,
+            item.gameId,
+            item.quantity,
+            item.unitPriceCents,
+            item.title,
+            item.platform,
+            item.unitPriceCents,
+            item.lineTotalCents,
+          ]
+        );
+      }
+
+      return {
+        submissionId,
+        estimatedTotalCents,
+        lockedItems,
+      };
+    });
+
     res.status(201).json({
       ok: true,
       submissionId: created.submissionId,
@@ -811,7 +1127,8 @@ app.post('/api/submissions', (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message || 'Could not create submission' });
   }
-});
+  })
+);
 
 function buildSubmissionFilter(query) {
   const where = [];
@@ -844,18 +1161,17 @@ function buildSubmissionFilter(query) {
   };
 }
 
-function getSubmissionDetailById(id) {
-  const submission = db
-    .prepare(
-      `SELECT id, customer_name, email, phone, notes, created_at, updated_at, status, price_version, estimated_total_cents, internal_notes
-       FROM submissions
-       WHERE id = ?`
-    )
-    .get(id);
+async function getSubmissionDetailById(id) {
+  const submission = await db.get(
+    `SELECT id, customer_name, email, phone, notes, created_at, updated_at, status, price_version, estimated_total_cents, internal_notes
+     FROM submissions
+     WHERE id = ?`,
+    [id]
+  );
   if (!submission) return null;
 
-  const items = db
-    .prepare(
+  const items = (
+    await db.all(
       `SELECT si.id,
               si.game_id,
               si.quantity,
@@ -869,24 +1185,20 @@ function getSubmissionDetailById(id) {
        FROM submission_items si
        LEFT JOIN games g ON g.id = si.game_id
        WHERE si.submission_id = ?
-       ORDER BY si.id ASC`
+       ORDER BY si.id ASC`,
+      [id]
     )
-    .all(id)
-    .map((row) => ({
-      id: row.id,
-      game_id: row.game_id,
-      title: row.title || 'Unknown Title',
-      platform: row.platform || '',
-      qty: row.quantity,
-      unit_price_at_submit: centsToMoney(row.unit_price_cents_at_submit),
-      line_total_at_submit: centsToMoney(row.line_total_cents_at_submit),
-      unit_price_cents_at_submit: Number.isInteger(row.unit_price_cents_at_submit)
-        ? row.unit_price_cents_at_submit
-        : 0,
-      line_total_cents_at_submit: Number.isInteger(row.line_total_cents_at_submit)
-        ? row.line_total_cents_at_submit
-        : 0,
-    }));
+  ).map((row) => ({
+    id: row.id,
+    game_id: row.game_id,
+    title: row.title || 'Unknown Title',
+    platform: row.platform || '',
+    qty: Number(row.quantity || 0),
+    unit_price_at_submit: centsToMoney(Number(row.unit_price_cents_at_submit || 0)),
+    line_total_at_submit: centsToMoney(Number(row.line_total_cents_at_submit || 0)),
+    unit_price_cents_at_submit: Number(row.unit_price_cents_at_submit || 0),
+    line_total_cents_at_submit: Number(row.line_total_cents_at_submit || 0),
+  }));
 
   return {
     id: submission.id,
@@ -898,7 +1210,9 @@ function getSubmissionDetailById(id) {
     notes: submission.notes || '',
     internal_notes: submission.internal_notes || '',
     status: normalizeSubmissionStatus(submission.status),
-    price_version: submission.price_version || normalizeBuylistVersion(getSettingValue('current_buylist_version', currentMonthVersion())),
+    price_version:
+      submission.price_version ||
+      normalizeBuylistVersion(await getSettingValue('current_buylist_version', currentMonthVersion())),
     estimated_total_cents: Number(submission.estimated_total_cents || 0),
     estimated_total: centsToMoney(Number(submission.estimated_total_cents || 0)),
     item_count: items.length,
@@ -907,47 +1221,48 @@ function getSubmissionDetailById(id) {
   };
 }
 
-app.get('/api/admin/submissions', requireAdmin, (req, res) => {
+app.get(
+  '/api/admin/submissions',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const pageRaw = Number(req.query.page || 1);
   const pageSizeRaw = Number(req.query.pageSize || 25);
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
   const pageSize = Number.isFinite(pageSizeRaw) && pageSizeRaw > 0 ? Math.min(100, Math.floor(pageSizeRaw)) : 25;
 
   const filter = buildSubmissionFilter(req.query);
-  const totalRow = db
-    .prepare(`SELECT COUNT(*) AS c FROM submissions s ${filter.whereSql}`)
-    .get(...filter.params);
+  const totalRow = await db.get(`SELECT COUNT(*) AS c FROM submissions s ${filter.whereSql}`, filter.params);
   const total = Number(totalRow?.c || 0);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
   const offset = (safePage - 1) * pageSize;
 
-  const rows = db
-    .prepare(
+  const defaultVersion = normalizeBuylistVersion(await getSettingValue('current_buylist_version', currentMonthVersion()));
+  const rows = (
+    await db.all(
       `SELECT s.id, s.customer_name, s.email, s.phone, s.created_at, s.updated_at, s.status, s.price_version, s.estimated_total_cents,
               (SELECT COUNT(*) FROM submission_items si WHERE si.submission_id = s.id) AS item_count,
               (SELECT COALESCE(SUM(si.quantity), 0) FROM submission_items si WHERE si.submission_id = s.id) AS total_qty
        FROM submissions s
        ${filter.whereSql}
        ORDER BY ${filter.orderSql}
-       LIMIT ? OFFSET ?`
+       LIMIT ? OFFSET ?`,
+      [...filter.params, pageSize, offset]
     )
-    .all(...filter.params, pageSize, offset)
-    .map((row) => ({
-      id: row.id,
-      created_at: row.created_at,
-      updated_at: row.updated_at || row.created_at,
-      seller_name: row.customer_name,
-      email: row.email || '',
-      phone: row.phone || '',
-      item_count: Number(row.item_count || 0),
-      total_qty: Number(row.total_qty || 0),
-      estimated_total: centsToMoney(Number(row.estimated_total_cents || 0)),
-      estimated_total_cents: Number(row.estimated_total_cents || 0),
-      status: normalizeSubmissionStatus(row.status),
-      price_version:
-        row.price_version || normalizeBuylistVersion(getSettingValue('current_buylist_version', currentMonthVersion())),
-    }));
+  ).map((row) => ({
+    id: row.id,
+    created_at: row.created_at,
+    updated_at: row.updated_at || row.created_at,
+    seller_name: row.customer_name,
+    email: row.email || '',
+    phone: row.phone || '',
+    item_count: Number(row.item_count || 0),
+    total_qty: Number(row.total_qty || 0),
+    estimated_total: centsToMoney(Number(row.estimated_total_cents || 0)),
+    estimated_total_cents: Number(row.estimated_total_cents || 0),
+    status: normalizeSubmissionStatus(row.status),
+    price_version: row.price_version || defaultVersion,
+  }));
 
   res.json({
     rows,
@@ -963,18 +1278,21 @@ app.get('/api/admin/submissions', requireAdmin, (req, res) => {
       sort: filter.sort,
     },
   });
-});
+  })
+);
 
-app.get('/api/admin/submissions/export-csv', requireAdmin, (req, res) => {
+app.get(
+  '/api/admin/submissions/export-csv',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const filter = buildSubmissionFilter(req.query);
-  const rows = db
-    .prepare(
-      `SELECT s.id
-       FROM submissions s
-       ${filter.whereSql}
-       ORDER BY ${filter.orderSql}`
-    )
-    .all(...filter.params);
+  const rows = await db.all(
+    `SELECT s.id
+     FROM submissions s
+     ${filter.whereSql}
+     ORDER BY ${filter.orderSql}`,
+    filter.params
+  );
 
   const csvRows = [
     [
@@ -996,7 +1314,7 @@ app.get('/api/admin/submissions/export-csv', requireAdmin, (req, res) => {
   ];
 
   for (const row of rows) {
-    const detail = getSubmissionDetailById(row.id);
+    const detail = await getSubmissionDetailById(row.id);
     if (!detail) continue;
 
     if (detail.items.length === 0) {
@@ -1042,31 +1360,37 @@ app.get('/api/admin/submissions/export-csv', requireAdmin, (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="submissions.csv"');
   res.send(rowsToCsv(csvRows));
-});
+  })
+);
 
-app.get('/api/admin/submissions/:id', requireAdmin, (req, res) => {
+app.get(
+  '/api/admin/submissions/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: 'Invalid submission ID.' });
   }
 
-  const detail = getSubmissionDetailById(id);
+  const detail = await getSubmissionDetailById(id);
   if (!detail) {
     return res.status(404).json({ error: 'Submission not found.' });
   }
 
   res.json(detail);
-});
+  })
+);
 
-app.put('/api/admin/submissions/:id', requireAdmin, (req, res) => {
+app.put(
+  '/api/admin/submissions/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: 'Invalid submission ID.' });
   }
 
-  const existing = db
-    .prepare('SELECT id, status, internal_notes FROM submissions WHERE id = ?')
-    .get(id);
+  const existing = await db.get('SELECT id, status, internal_notes FROM submissions WHERE id = ?', [id]);
   if (!existing) {
     return res.status(404).json({ error: 'Submission not found.' });
   }
@@ -1078,23 +1402,28 @@ app.put('/api/admin/submissions/:id', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Rejected submissions require internal notes of at least 10 characters.' });
   }
 
-  db.prepare(
+  await db.run(
     `UPDATE submissions
      SET status = ?, internal_notes = ?, updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(nextStatus, internalNotes, id);
+     WHERE id = ?`,
+    [nextStatus, internalNotes, id]
+  );
 
-  const detail = getSubmissionDetailById(id);
+  const detail = await getSubmissionDetailById(id);
   res.json({ ok: true, submission: detail });
-});
+  })
+);
 
-app.get('/api/admin/submissions/:id/export-csv', requireAdmin, (req, res) => {
+app.get(
+  '/api/admin/submissions/:id/export-csv',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: 'Invalid submission ID.' });
   }
 
-  const detail = getSubmissionDetailById(id);
+  const detail = await getSubmissionDetailById(id);
   if (!detail) {
     return res.status(404).json({ error: 'Submission not found.' });
   }
@@ -1136,24 +1465,31 @@ app.get('/api/admin/submissions/:id/export-csv', requireAdmin, (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="submission-${id}.csv"`);
   res.send(rowsToCsv(rows));
-});
+  })
+);
 
-app.get('/api/admin/faqs', requireAdmin, (req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT id, question, answer, sort_order, active, updated_at
-       FROM faqs
-       ORDER BY sort_order ASC, id ASC`
-    )
-    .all()
-    .map((r) => ({
+app.get(
+  '/api/admin/faqs',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const rows = (
+      await db.all(
+        `SELECT id, question, answer, sort_order, active, updated_at
+         FROM faqs
+         ORDER BY sort_order ASC, id ASC`
+      )
+    ).map((r) => ({
       ...r,
       active: Boolean(r.active),
     }));
-  res.json(rows);
-});
+    res.json(rows);
+  })
+);
 
-app.post('/api/admin/faqs', requireAdmin, (req, res) => {
+app.post(
+  '/api/admin/faqs',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const { question, answer, sortOrder, active } = req.body || {};
   const q = String(question || '').trim();
   const a = String(answer || '').trim();
@@ -1162,23 +1498,30 @@ app.post('/api/admin/faqs', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Question and answer are required' });
   }
 
-  const info = db
-    .prepare(
-      `INSERT INTO faqs (question, answer, sort_order, active, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'))`
-    )
-    .run(q, a, order, active === false ? 0 : 1);
+  const info = await db.run(
+    usingPostgres
+      ? `INSERT INTO faqs (question, answer, sort_order, active, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'))
+         RETURNING id`
+      : `INSERT INTO faqs (question, answer, sort_order, active, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'))`,
+    [q, a, order, active === false ? 0 : 1]
+  );
 
   res.status(201).json({ ok: true, id: Number(info.lastInsertRowid) });
-});
+  })
+);
 
-app.put('/api/admin/faqs/:id', requireAdmin, (req, res) => {
+app.put(
+  '/api/admin/faqs/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: 'Invalid ID' });
   }
 
-  const existing = db.prepare('SELECT id FROM faqs WHERE id = ?').get(id);
+  const existing = await db.get('SELECT id FROM faqs WHERE id = ?', [id]);
   if (!existing) {
     return res.status(404).json({ error: 'FAQ not found' });
   }
@@ -1191,15 +1534,14 @@ app.put('/api/admin/faqs/:id', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Question and answer are required' });
   }
 
-  db.prepare(
+  await db.run(
     `UPDATE faqs
      SET question = ?, answer = ?, sort_order = ?, active = ?, updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(q, a, order, active ? 1 : 0, id);
+     WHERE id = ?`,
+    [q, a, order, active ? 1 : 0, id]
+  );
 
-  const row = db
-    .prepare('SELECT id, question, answer, sort_order, active, updated_at FROM faqs WHERE id = ?')
-    .get(id);
+  const row = await db.get('SELECT id, question, answer, sort_order, active, updated_at FROM faqs WHERE id = ?', [id]);
   res.json({
     ok: true,
     faq: {
@@ -1207,21 +1549,29 @@ app.put('/api/admin/faqs/:id', requireAdmin, (req, res) => {
       active: Boolean(row.active),
     },
   });
-});
+  })
+);
 
-app.delete('/api/admin/faqs/:id', requireAdmin, (req, res) => {
+app.delete(
+  '/api/admin/faqs/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: 'Invalid ID' });
   }
-  const result = db.prepare('DELETE FROM faqs WHERE id = ?').run(id);
+  const result = await db.run('DELETE FROM faqs WHERE id = ?', [id]);
   if (result.changes === 0) {
     return res.status(404).json({ error: 'FAQ not found' });
   }
   res.json({ ok: true });
-});
+  })
+);
 
-app.post('/api/admin/games', requireAdmin, (req, res) => {
+app.post(
+  '/api/admin/games',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const { title, platform, condition, condition_note, conditionNote, price, active } = req.body || {};
   if (!title || typeof title !== 'string') {
     return res.status(400).json({ error: 'Title is required' });
@@ -1233,38 +1583,39 @@ app.post('/api/admin/games', requireAdmin, (req, res) => {
   }
   const normalizedCondition = normalizeCondition(condition ?? condition_note ?? conditionNote);
 
-  const info = db
-    .prepare(
-      `INSERT INTO games
-        (title, platform, condition_note, price_cents, active, updated_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'))`
-    )
-    .run(
-      title.trim(),
-      normalizePlatform(platform),
-      normalizedCondition,
-      priceCents,
-      active === false ? 0 : 1
-    );
+  const info = await db.run(
+    usingPostgres
+      ? `INSERT INTO games
+          (title, platform, condition_note, price_cents, active, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         RETURNING id`
+      : `INSERT INTO games
+          (title, platform, condition_note, price_cents, active, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+    [title.trim(), normalizePlatform(platform), normalizedCondition, priceCents, active === false ? 0 : 1]
+  );
 
-  const created = db
-    .prepare(
-      `SELECT id, title, platform, condition_note, price_cents, active, updated_at
-       FROM games
-       WHERE id = ?`
-    )
-    .get(Number(info.lastInsertRowid));
+  const created = await db.get(
+    `SELECT id, title, platform, condition_note, price_cents, active, updated_at
+     FROM games
+     WHERE id = ?`,
+    [Number(info.lastInsertRowid)]
+  );
 
   res.status(201).json({ ok: true, id: Number(info.lastInsertRowid), game: asPublicGame(created) });
-});
+  })
+);
 
-app.put('/api/admin/games/:id', requireAdmin, (req, res) => {
+app.put(
+  '/api/admin/games/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: 'Invalid ID' });
   }
 
-  const existing = db.prepare('SELECT id FROM games WHERE id = ?').get(id);
+  const existing = await db.get('SELECT id FROM games WHERE id = ?', [id]);
   if (!existing) {
     return res.status(404).json({ error: 'Game not found' });
   }
@@ -1280,7 +1631,7 @@ app.put('/api/admin/games/:id', requireAdmin, (req, res) => {
   }
   const normalizedCondition = normalizeCondition(condition ?? condition_note ?? conditionNote);
 
-  db.prepare(
+  await db.run(
     `UPDATE games
      SET title = ?,
          platform = ?,
@@ -1288,45 +1639,46 @@ app.put('/api/admin/games/:id', requireAdmin, (req, res) => {
          price_cents = ?,
          active = ?,
          updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(
-    title.trim(),
-    normalizePlatform(platform),
-    normalizedCondition,
-    priceCents,
-    active ? 1 : 0,
-    id
+     WHERE id = ?`,
+    [title.trim(), normalizePlatform(platform), normalizedCondition, priceCents, active ? 1 : 0, id]
   );
 
-  const updated = db
-    .prepare(
-      `SELECT id, title, platform, condition_note, price_cents, active, updated_at
-       FROM games
-       WHERE id = ?`
-    )
-    .get(id);
+  const updated = await db.get(
+    `SELECT id, title, platform, condition_note, price_cents, active, updated_at
+     FROM games
+     WHERE id = ?`,
+    [id]
+  );
 
   res.json({
     ok: true,
     game: asPublicGame(updated),
   });
-});
+  })
+);
 
-app.delete('/api/admin/games/:id', requireAdmin, (req, res) => {
+app.delete(
+  '/api/admin/games/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: 'Invalid ID' });
   }
 
-  const result = db.prepare('DELETE FROM games WHERE id = ?').run(id);
+  const result = await db.run('DELETE FROM games WHERE id = ?', [id]);
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Game not found' });
   }
 
   res.json({ ok: true });
-});
+  })
+);
 
-app.post('/api/admin/games/import-csv', requireAdmin, (req, res) => {
+app.post(
+  '/api/admin/games/import-csv',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const { csv } = req.body || {};
   if (!csv || typeof csv !== 'string') {
     return res.status(400).json({ error: 'CSV content is required' });
@@ -1340,39 +1692,34 @@ app.post('/api/admin/games/import-csv', requireAdmin, (req, res) => {
     });
   }
 
-  const insert = db.prepare(
-    `INSERT INTO games
-      (title, platform, condition_note, price_cents, active, updated_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))`
-  );
-
-  const tx = db.transaction((rows) => {
-    db.prepare('DELETE FROM games').run();
-    for (const row of rows) {
-      insert.run(
-        row.title,
-        row.platform,
-        row.condition,
-        row.priceCents,
-        row.active
+  await withTransaction(async (tx) => {
+    await tx.run('DELETE FROM games');
+    for (const row of parsed.rows) {
+      await tx.run(
+        `INSERT INTO games
+          (title, platform, condition_note, price_cents, active, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+        [row.title, row.platform, row.condition, row.priceCents, row.active]
       );
     }
   });
 
-  tx(parsed.rows);
   res.json({ ok: true, imported: parsed.rows.length });
-});
+  })
+);
 
-app.get('/api/admin/games/export-csv', requireAdmin, (req, res) => {
+app.get(
+  '/api/admin/games/export-csv',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
   const filter = buildGameFilterWhere(req.query || {});
-  const rows = db
-    .prepare(
-      `SELECT title, platform, condition_note, price_cents, active
-       FROM games
-       ${filter.whereSql}
-       ORDER BY title ASC`
-    )
-    .all(...filter.params);
+  const rows = await db.all(
+    `SELECT title, platform, condition_note, price_cents, active
+     FROM games
+     ${filter.whereSql}
+     ORDER BY title ASC`,
+    filter.params
+  );
 
   const lines = ['title,platform,condition,price,active'];
   for (const r of rows) {
@@ -1390,6 +1737,13 @@ app.get('/api/admin/games/export-csv', requireAdmin, (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="buylist.csv"');
   res.send(`${lines.join('\n')}\n`);
+  })
+);
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 if (!isVercel) {

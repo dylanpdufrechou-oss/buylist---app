@@ -132,7 +132,7 @@ let submissionsState = {
   q: '',
   sort: 'newest',
 };
-let runtimeInfo = { isVercel: false, ephemeralStorage: false };
+let runtimeInfo = { isVercel: false, ephemeralStorage: false, persistentStorage: true, dbProvider: 'sqlite' };
 let hasAttemptedEphemeralRestore = false;
 
 function escapeHtml(str) {
@@ -299,9 +299,11 @@ async function loadRuntimeInfo() {
     runtimeInfo = {
       isVercel: Boolean(body && body.isVercel),
       ephemeralStorage: Boolean(body && body.ephemeralStorage),
+      persistentStorage: body?.persistentStorage !== false,
+      dbProvider: String(body?.dbProvider || 'sqlite'),
     };
   } catch {
-    runtimeInfo = { isVercel: false, ephemeralStorage: false };
+    runtimeInfo = { isVercel: false, ephemeralStorage: false, persistentStorage: true, dbProvider: 'sqlite' };
   }
 }
 
@@ -1401,6 +1403,8 @@ async function bootstrapAdmin() {
         'Connected. Warning: this deployment uses temporary storage. Local backup recovery is enabled for this browser.',
         'warn'
       );
+    } else if (runtimeInfo.dbProvider === 'postgres') {
+      renderNotice('Connected. Persistent storage is active (Postgres).');
     } else {
       renderNotice('Connected.');
     }

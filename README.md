@@ -11,7 +11,9 @@ A simple website to publish your buylist, let customers submit selected games wi
   - Export buylist to CSV for Excel
   - Import buylist from CSV to replace the list monthly
   - View recent submissions and item totals
-- SQLite database storage (local file)
+- Database provider support:
+  - SQLite (local development)
+  - Postgres (production-safe, persistent on Vercel)
 
 ## Quick Start
 1. Install dependencies:
@@ -27,14 +29,17 @@ cp .env.example .env
 ```
 
 3. Set a strong `ADMIN_KEY` in `.env`.
+4. Choose DB mode:
+   - Local default: `DB_PROVIDER=sqlite` and `DATA_DIR=./data`
+   - Vercel persistent: `DB_PROVIDER=postgres` and set `DATABASE_URL`
 
-4. Run the server:
+5. Run the server:
 
 ```bash
 npm start
 ```
 
-5. Open:
+6. Open:
 - Seller page: `http://localhost:3000/` (also available at `/seller.html`)
 - Admin page: `http://localhost:3000/admin.html`
 
@@ -58,7 +63,41 @@ Super Mario Odyssey,Nintendo Switch,Complete in box,25.00,1
 ## Notes
 - CSV import fully replaces the game list.
 - Submission records remain in the database.
-- Default seeded sample titles are added automatically when database is empty.
+- Sample seed titles are only inserted when `SEED_SAMPLE_DATA=true`.
+
+## Vercel Postgres Setup (Persistent Imports)
+1. In Vercel, create and attach a Postgres database to your project.
+2. Set production environment variables in Vercel:
+   - `DB_PROVIDER=postgres`
+   - `DATABASE_URL=<your vercel postgres connection string>`
+   - `PGSSLMODE=require`
+   - `SEED_SAMPLE_DATA=false`
+   - `ADMIN_KEY=<your admin key>`
+3. Deploy.
+
+## One-Time Migration (SQLite -> Postgres)
+Use this once to copy existing local SQLite data (games, FAQs, submissions, settings) into Postgres.
+
+1. Ensure your local `.env` includes the target Postgres `DATABASE_URL`.
+2. Initialize schema:
+
+```bash
+npm run db:init:postgres
+```
+
+3. Run migration:
+
+```bash
+npm run db:migrate:postgres
+```
+
+Optional if your SQLite file is not in `./data/buylist.db`:
+
+```bash
+SQLITE_PATH=/absolute/path/to/buylist.db npm run db:migrate:postgres
+```
+
+4. Verify row counts in Postgres, then set Vercel env vars and deploy.
 
 ## Deploy To Render (Alternative Host)
 1. Push this project to a GitHub repo.
