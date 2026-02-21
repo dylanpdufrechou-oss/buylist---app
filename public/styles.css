@@ -111,17 +111,19 @@ header {
   display: inline-flex;
   align-items: center;
   min-width: 0;
-  max-width: min(72vw, 440px);
+  max-width: min(74vw, 520px);
   text-decoration: none;
 }
 
 .brand-logo {
   display: block;
-  width: clamp(250px, 37vw, 430px);
-  height: auto;
-  max-width: 100%;
+  width: auto;
+  height: clamp(52px, 6.6vw, 88px);
+  max-width: min(74vw, 520px);
+  object-fit: contain;
+  object-position: left center;
   filter: drop-shadow(0 4px 12px rgba(5, 14, 40, 0.35));
-  image-rendering: -webkit-optimize-contrast;
+  image-rendering: auto;
 }
 
 .top-nav-home {
@@ -840,8 +842,27 @@ td {
     text-align: center;
   }
 
-  table.desktop-centered-table .table-title-col {
+  table.desktop-centered-table .table-title-header-col {
+    text-align: center;
+  }
+
+  table.desktop-centered-table .table-title-data-col {
     text-align: left;
+  }
+
+  table.desktop-centered-table th.table-qty-col,
+  table.desktop-centered-table td.table-qty-col {
+    text-align: center;
+  }
+
+  table.desktop-centered-table td.table-qty-col .qty-cell {
+    justify-content: center;
+  }
+
+  table.desktop-centered-table td.table-qty-col input[type='number'] {
+    display: block;
+    margin-inline: auto;
+    text-align: center;
   }
 }
 
@@ -1526,11 +1547,13 @@ a {
   }
 
   .brand-link {
-    max-width: min(72vw, 340px);
+    max-width: min(76vw, 360px);
   }
 
   .brand-logo {
-    width: clamp(190px, 54vw, 320px);
+    width: auto;
+    height: clamp(42px, 11vw, 64px);
+    max-width: min(76vw, 360px);
   }
 
   .top-nav-home {
