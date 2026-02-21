@@ -834,6 +834,17 @@ td {
   vertical-align: middle;
 }
 
+@media (min-width: 641px) {
+  table.desktop-centered-table th,
+  table.desktop-centered-table td {
+    text-align: center;
+  }
+
+  table.desktop-centered-table .table-title-col {
+    text-align: left;
+  }
+}
+
 .sheet-table tbody tr:nth-child(even) {
   background: rgba(255, 255, 255, 0.02);
 }
