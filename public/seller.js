@@ -29,6 +29,7 @@ const PRICING_LOCK_ANSWER = 'Pricing is locked in once your shipment is submitte
 const MIN_TABLE_HEIGHT = 300;
 const MOBILE_PLATFORM_BREAKPOINT_QUERY = '(max-width: 640px)';
 const ALL_PLATFORMS_VALUE = '__all__';
+const TITLE_PREVIEW_HOLD_MS = 220;
 
 let games = [];
 const qtyMap = new Map();
@@ -52,6 +53,10 @@ let hasSubmittedShipment = false;
 let mobileSubmitToastTimer = 0;
 const mobilePlatformMedia = window.matchMedia(MOBILE_PLATFORM_BREAKPOINT_QUERY);
 let isMobilePlatformUi = mobilePlatformMedia.matches;
+let titlePreviewBubble = null;
+let titlePreviewHoldTimer = 0;
+let titlePreviewTrigger = null;
+let titlePreviewHoldTriggered = false;
 
 function escapeHtml(str) {
   return String(str || '')
@@ -155,9 +160,132 @@ function renderPriceWithDelta(game, meta = priceDeltaMeta(game)) {
 function renderTitleWithDelta(game, meta = priceDeltaMeta(game)) {
   const arrow = meta.className === 'up' ? '▲' : meta.className === 'down' ? '▼' : '';
   const className = meta.className ? `title-cell-value ${meta.className}` : 'title-cell-value';
-  return `<span class="${className}">${escapeHtml(game.title || '')}${
+  const fullTitle = escapeHtml(game.title || '');
+  return `<span class="${className} js-title-preview-trigger" data-full-title="${fullTitle}" title="${fullTitle}">${fullTitle}${
     arrow ? `<span class="title-delta-arrow">${arrow}</span>` : ''
   }</span>`;
+}
+
+function ensureTitlePreviewBubble() {
+  if (titlePreviewBubble && titlePreviewBubble.isConnected) return titlePreviewBubble;
+  const bubble = document.createElement('div');
+  bubble.className = 'title-preview-bubble';
+  bubble.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(bubble);
+  titlePreviewBubble = bubble;
+  return bubble;
+}
+
+function clearTitlePreviewTimer() {
+  if (!titlePreviewHoldTimer) return;
+  clearTimeout(titlePreviewHoldTimer);
+  titlePreviewHoldTimer = 0;
+}
+
+function isTitlePreviewVisible() {
+  return Boolean(titlePreviewBubble && titlePreviewBubble.classList.contains('is-visible'));
+}
+
+function hideTitlePreviewBubble() {
+  clearTitlePreviewTimer();
+  if (titlePreviewBubble) {
+    titlePreviewBubble.classList.remove('is-visible');
+  }
+  titlePreviewHoldTriggered = false;
+  titlePreviewTrigger = null;
+}
+
+function positionTitlePreviewBubble(trigger, bubble) {
+  const spacing = 8;
+  const triggerRect = trigger.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const maxWidth = Math.max(140, viewportWidth - spacing * 2);
+  bubble.style.maxWidth = `${maxWidth}px`;
+  bubble.style.left = `${spacing}px`;
+  bubble.style.top = `${spacing}px`;
+
+  const bubbleRect = bubble.getBoundingClientRect();
+  let left = triggerRect.left + triggerRect.width / 2 - bubbleRect.width / 2;
+  left = Math.max(spacing, Math.min(left, viewportWidth - bubbleRect.width - spacing));
+
+  let top = triggerRect.top - bubbleRect.height - spacing;
+  if (top < spacing) {
+    top = triggerRect.bottom + spacing;
+  }
+  if (top + bubbleRect.height > viewportHeight - spacing) {
+    top = Math.max(spacing, viewportHeight - bubbleRect.height - spacing);
+  }
+
+  bubble.style.left = `${Math.round(left)}px`;
+  bubble.style.top = `${Math.round(top)}px`;
+}
+
+function showTitlePreviewBubble(trigger) {
+  if (!mobilePlatformMedia.matches || !trigger) return;
+  const fullTitle = String(trigger.getAttribute('data-full-title') || trigger.textContent || '').trim();
+  if (!fullTitle) return;
+
+  const bubble = ensureTitlePreviewBubble();
+  bubble.textContent = fullTitle;
+  bubble.classList.add('is-visible');
+  positionTitlePreviewBubble(trigger, bubble);
+}
+
+function queueTitlePreviewBubble(trigger) {
+  clearTitlePreviewTimer();
+  titlePreviewTrigger = trigger;
+  titlePreviewHoldTriggered = false;
+  titlePreviewHoldTimer = window.setTimeout(() => {
+    if (titlePreviewTrigger !== trigger) return;
+    titlePreviewHoldTriggered = true;
+    showTitlePreviewBubble(trigger);
+  }, TITLE_PREVIEW_HOLD_MS);
+}
+
+function setupMobileTitlePreview() {
+  if (!buylistWrap) return;
+
+  buylistWrap.addEventListener('pointerdown', (event) => {
+    if (!mobilePlatformMedia.matches) return;
+    if (event.pointerType === 'mouse') return;
+    const trigger = event.target.closest('.js-title-preview-trigger');
+    if (!trigger || !buylistWrap.contains(trigger)) {
+      if (isTitlePreviewVisible()) hideTitlePreviewBubble();
+      return;
+    }
+    queueTitlePreviewBubble(trigger);
+  });
+
+  document.addEventListener(
+    'pointerup',
+    (event) => {
+      if (!mobilePlatformMedia.matches || event.pointerType === 'mouse') return;
+      const hadPendingHold = Boolean(titlePreviewHoldTimer);
+      clearTitlePreviewTimer();
+      if (!titlePreviewHoldTriggered && hadPendingHold && isTitlePreviewVisible()) {
+        hideTitlePreviewBubble();
+        return;
+      }
+      titlePreviewHoldTriggered = false;
+      titlePreviewTrigger = null;
+    },
+    true
+  );
+
+  document.addEventListener(
+    'pointercancel',
+    () => {
+      clearTitlePreviewTimer();
+      titlePreviewHoldTriggered = false;
+      titlePreviewTrigger = null;
+    },
+    true
+  );
+
+  const dismissPreview = () => hideTitlePreviewBubble();
+  window.addEventListener('scroll', dismissPreview, { passive: true });
+  window.addEventListener('blur', dismissPreview);
 }
 
 function applyGames(nextGames) {
@@ -815,6 +943,7 @@ form.addEventListener('submit', async (e) => {
 });
 
 initConditionStandardsAccordion();
+setupMobileTitlePreview();
 updateTotal();
 renderSelectedItems();
 syncTableViewportHeight();

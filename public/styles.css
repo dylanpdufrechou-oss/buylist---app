@@ -1752,6 +1752,41 @@ a {
     transform: translateY(0);
   }
 
+  .buylist-table-wrap .js-title-preview-trigger {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .title-preview-bubble {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1600;
+    max-width: calc(100vw - 1rem);
+    padding: 0.5rem 0.62rem;
+    border-radius: 10px;
+    border: 1px solid rgba(146, 232, 255, 0.5);
+    background: rgba(8, 15, 40, 0.97);
+    color: #f1f7ff;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(3px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+
+  .title-preview-bubble.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
   .quick-add-toast {
     right: 0.7rem;
     bottom: calc(86px + env(safe-area-inset-bottom));
