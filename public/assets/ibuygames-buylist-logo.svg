@@ -1,0 +1,67 @@
+<svg width="1040" height="260" viewBox="0 0 1040 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logoBlue" x1="40" y1="32" x2="430" y2="230" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#39E8FF" />
+      <stop offset="1" stop-color="#0B57D0" />
+    </linearGradient>
+    <linearGradient id="logoTextBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#34DEFF" />
+      <stop offset="1" stop-color="#0B7CFF" />
+    </linearGradient>
+  </defs>
+  <g transform="translate(14 16)">
+    <path
+      d="M94 210C46 210 10 172 10 126V106C10 56 46 20 96 20H240L222 48H96C62 48 34 74 34 108V124C34 158 62 186 96 186H146L130 210H94Z"
+      fill="url(#logoBlue)"
+    />
+    <path
+      d="M246 48H322C372 48 408 84 408 134V154C408 204 372 240 322 240H180L196 212H322C356 212 384 184 384 150V136C384 102 356 74 322 74H246V48Z"
+      fill="#F4F8FF"
+    />
+    <path
+      d="M242 2L174 94H218L138 258L272 108H228L308 2H242Z"
+      fill="url(#logoBlue)"
+    />
+    <rect x="80" y="98" width="16" height="56" rx="4" fill="url(#logoBlue)" />
+    <rect x="60" y="118" width="56" height="16" rx="4" fill="url(#logoBlue)" />
+    <circle cx="326" cy="108" r="12" fill="#EAF3FF" />
+    <circle cx="300" cy="136" r="12" fill="#A9D2FF" />
+    <circle cx="352" cy="136" r="12" fill="#A9D2FF" />
+    <circle cx="326" cy="164" r="12" fill="#EAF3FF" />
+  </g>
+  <g transform="translate(445 42)">
+    <text
+      x="0"
+      y="118"
+      font-family="'Space Grotesk', 'Segoe UI', Arial, sans-serif"
+      font-size="112"
+      font-weight="700"
+      letter-spacing="-1"
+      fill="url(#logoTextBlue)"
+    >
+      IBuy
+    </text>
+    <text
+      x="305"
+      y="118"
+      font-family="'Space Grotesk', 'Segoe UI', Arial, sans-serif"
+      font-size="112"
+      font-weight="700"
+      letter-spacing="-1"
+      fill="#F4F8FF"
+    >
+      Games
+    </text>
+    <text
+      x="0"
+      y="202"
+      font-family="'Space Grotesk', 'Segoe UI', Arial, sans-serif"
+      font-size="66"
+      font-weight="700"
+      letter-spacing="11"
+      fill="#F4F8FF"
+    >
+      BUYLIST
+    </text>
+  </g>
+</svg>
