@@ -218,8 +218,13 @@ async function setDefaultSetting(key, value) {
 }
 
 async function getSettingValue(key, fallback) {
-  const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [key]);
-  return row ? row.value : fallback;
+  try {
+    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [key]);
+    return row ? row.value : fallback;
+  } catch (error) {
+    console.error(`Setting read failed for "${key}", using fallback.`, error);
+    return fallback;
+  }
 }
 
 function parsePriceToCents(raw) {

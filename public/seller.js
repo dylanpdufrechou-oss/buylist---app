@@ -1101,25 +1101,37 @@ form.addEventListener('submit', async (e) => {
     items: items.map((i) => ({ gameId: i.gameId, quantity: i.quantity })),
   };
 
-  const r = await fetch('/api/submissions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const body = await r.json();
+  try {
+    const r = await fetch('/api/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-  if (!r.ok) {
-    renderMessage(body.error || 'Could not submit. Try again.', 'error');
-    return;
+    const responseText = await r.text();
+    let body = {};
+    try {
+      body = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      body = {};
+    }
+
+    if (!r.ok) {
+      const fallbackError = responseText && !body.error ? responseText : '';
+      renderMessage(body.error || fallbackError || 'Could not submit. Try again.', 'error');
+      return;
+    }
+
+    renderShipment(body.shipment, payload);
+    hasSubmittedShipment = true;
+    form.reset();
+    qtyMap.clear();
+    renderTable();
+    renderSelectedItems();
+    renderMessage(`Shipment ${body.shipment.id} submitted. Print and include the packing slip in your box.`);
+  } catch {
+    renderMessage('Could not submit right now. Check your connection and try again.', 'error');
   }
-
-  renderShipment(body.shipment, payload);
-  hasSubmittedShipment = true;
-  form.reset();
-  qtyMap.clear();
-  renderTable();
-  renderSelectedItems();
-  renderMessage(`Shipment ${body.shipment.id} submitted. Print and include the packing slip in your box.`);
 });
 
 initConditionStandardsAccordion();
