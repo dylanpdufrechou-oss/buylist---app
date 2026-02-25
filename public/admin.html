@@ -39,6 +39,26 @@
                 <option value="0">Off (Show normal pricing only)</option>
               </select>
               <p class="muted" style="margin: 0">Controls whether buff/nerf highlights appear on public seller pages.</p>
+              <h3 style="margin: 0.9rem 0 0.25rem">Ship To Details</h3>
+              <p class="muted" style="margin: 0 0 0.3rem">Shown on seller packing slips.</p>
+              <input id="shipToBusinessName" placeholder="Business Name" />
+              <input id="shipToContactName" placeholder="Contact Name (optional)" />
+              <input id="shipToAddressLine1" placeholder="Address Line 1" />
+              <input id="shipToAddressLine2" placeholder="Address Line 2 (optional)" />
+              <div class="grid two">
+                <input id="shipToCity" placeholder="City" />
+                <input id="shipToState" placeholder="State" />
+              </div>
+              <div class="grid two">
+                <input id="shipToPostalCode" placeholder="ZIP / Postal Code" />
+                <input id="shipToCountry" placeholder="Country" />
+              </div>
+              <label for="packingNextStepsText" class="muted" style="margin-top: 0.5rem">Post-Print Next Steps</label>
+              <textarea
+                id="packingNextStepsText"
+                rows="5"
+                placeholder="One instruction per line for sellers after printing."
+              ></textarea>
               <div id="buylistPublishMeta" class="buylist-publish-meta">
                 <p class="muted" style="margin: 0">
                   Last published: <strong id="lastPublishedVersion">-</strong>

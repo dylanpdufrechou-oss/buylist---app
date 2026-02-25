@@ -5,6 +5,15 @@ const adminMessage = document.getElementById('adminMessage');
 
 const currentBuylistVersionInput = document.getElementById('currentBuylistVersion');
 const showPriceChangeHighlightsInput = document.getElementById('showPriceChangeHighlights');
+const shipToBusinessNameInput = document.getElementById('shipToBusinessName');
+const shipToContactNameInput = document.getElementById('shipToContactName');
+const shipToAddressLine1Input = document.getElementById('shipToAddressLine1');
+const shipToAddressLine2Input = document.getElementById('shipToAddressLine2');
+const shipToCityInput = document.getElementById('shipToCity');
+const shipToStateInput = document.getElementById('shipToState');
+const shipToPostalCodeInput = document.getElementById('shipToPostalCode');
+const shipToCountryInput = document.getElementById('shipToCountry');
+const packingNextStepsTextInput = document.getElementById('packingNextStepsText');
 const saveBuylistVersionBtn = document.getElementById('saveBuylistVersion');
 const publishBuylistSnapshotBtn = document.getElementById('publishBuylistSnapshot');
 const lastPublishedVersionEl = document.getElementById('lastPublishedVersion');
@@ -145,6 +154,15 @@ let hasAttemptedEphemeralRestore = false;
 let adminSettings = {
   current_buylist_version: '',
   show_price_change_highlights_public: true,
+  ship_to_business_name: '',
+  ship_to_contact_name: '',
+  ship_to_address_line1: '',
+  ship_to_address_line2: '',
+  ship_to_city: '',
+  ship_to_state: '',
+  ship_to_postal_code: '',
+  ship_to_country: '',
+  packing_next_steps_text: '',
   last_published_version: null,
   last_published_at: null,
   comparison_baseline_version: null,
@@ -1010,11 +1028,29 @@ async function loadAdminSettings() {
   adminSettings = {
     current_buylist_version: nextCurrentVersion,
     show_price_change_highlights_public: settings.show_price_change_highlights_public !== false,
+    ship_to_business_name: settings.ship_to_business_name || '',
+    ship_to_contact_name: settings.ship_to_contact_name || '',
+    ship_to_address_line1: settings.ship_to_address_line1 || '',
+    ship_to_address_line2: settings.ship_to_address_line2 || '',
+    ship_to_city: settings.ship_to_city || '',
+    ship_to_state: settings.ship_to_state || '',
+    ship_to_postal_code: settings.ship_to_postal_code || '',
+    ship_to_country: settings.ship_to_country || '',
+    packing_next_steps_text: settings.packing_next_steps_text || '',
     last_published_version: settings.last_published_version || null,
     last_published_at: settings.last_published_at || null,
     comparison_baseline_version: settings.comparison_baseline_version || null,
   };
   currentBuylistVersionInput.value = nextCurrentVersion;
+  if (shipToBusinessNameInput) shipToBusinessNameInput.value = adminSettings.ship_to_business_name;
+  if (shipToContactNameInput) shipToContactNameInput.value = adminSettings.ship_to_contact_name;
+  if (shipToAddressLine1Input) shipToAddressLine1Input.value = adminSettings.ship_to_address_line1;
+  if (shipToAddressLine2Input) shipToAddressLine2Input.value = adminSettings.ship_to_address_line2;
+  if (shipToCityInput) shipToCityInput.value = adminSettings.ship_to_city;
+  if (shipToStateInput) shipToStateInput.value = adminSettings.ship_to_state;
+  if (shipToPostalCodeInput) shipToPostalCodeInput.value = adminSettings.ship_to_postal_code;
+  if (shipToCountryInput) shipToCountryInput.value = adminSettings.ship_to_country;
+  if (packingNextStepsTextInput) packingNextStepsTextInput.value = adminSettings.packing_next_steps_text;
   renderPublishMeta();
 }
 
@@ -1024,6 +1060,15 @@ async function saveAdminSettings() {
     show_price_change_highlights_public: showPriceChangeHighlightsInput
       ? showPriceChangeHighlightsInput.value === '1'
       : true,
+    ship_to_business_name: shipToBusinessNameInput ? shipToBusinessNameInput.value : '',
+    ship_to_contact_name: shipToContactNameInput ? shipToContactNameInput.value : '',
+    ship_to_address_line1: shipToAddressLine1Input ? shipToAddressLine1Input.value : '',
+    ship_to_address_line2: shipToAddressLine2Input ? shipToAddressLine2Input.value : '',
+    ship_to_city: shipToCityInput ? shipToCityInput.value : '',
+    ship_to_state: shipToStateInput ? shipToStateInput.value : '',
+    ship_to_postal_code: shipToPostalCodeInput ? shipToPostalCodeInput.value : '',
+    ship_to_country: shipToCountryInput ? shipToCountryInput.value : '',
+    packing_next_steps_text: packingNextStepsTextInput ? packingNextStepsTextInput.value : '',
   };
 
   const res = await adminFetch('/api/admin/settings', {
@@ -1038,11 +1083,29 @@ async function saveAdminSettings() {
   adminSettings = {
     current_buylist_version: nextCurrentVersion,
     show_price_change_highlights_public: settings.show_price_change_highlights_public !== false,
+    ship_to_business_name: settings.ship_to_business_name || payload.ship_to_business_name || '',
+    ship_to_contact_name: settings.ship_to_contact_name || payload.ship_to_contact_name || '',
+    ship_to_address_line1: settings.ship_to_address_line1 || payload.ship_to_address_line1 || '',
+    ship_to_address_line2: settings.ship_to_address_line2 || payload.ship_to_address_line2 || '',
+    ship_to_city: settings.ship_to_city || payload.ship_to_city || '',
+    ship_to_state: settings.ship_to_state || payload.ship_to_state || '',
+    ship_to_postal_code: settings.ship_to_postal_code || payload.ship_to_postal_code || '',
+    ship_to_country: settings.ship_to_country || payload.ship_to_country || '',
+    packing_next_steps_text: settings.packing_next_steps_text || payload.packing_next_steps_text || '',
     last_published_version: settings.last_published_version || null,
     last_published_at: settings.last_published_at || null,
     comparison_baseline_version: settings.comparison_baseline_version || null,
   };
   currentBuylistVersionInput.value = nextCurrentVersion;
+  if (shipToBusinessNameInput) shipToBusinessNameInput.value = adminSettings.ship_to_business_name;
+  if (shipToContactNameInput) shipToContactNameInput.value = adminSettings.ship_to_contact_name;
+  if (shipToAddressLine1Input) shipToAddressLine1Input.value = adminSettings.ship_to_address_line1;
+  if (shipToAddressLine2Input) shipToAddressLine2Input.value = adminSettings.ship_to_address_line2;
+  if (shipToCityInput) shipToCityInput.value = adminSettings.ship_to_city;
+  if (shipToStateInput) shipToStateInput.value = adminSettings.ship_to_state;
+  if (shipToPostalCodeInput) shipToPostalCodeInput.value = adminSettings.ship_to_postal_code;
+  if (shipToCountryInput) shipToCountryInput.value = adminSettings.ship_to_country;
+  if (packingNextStepsTextInput) packingNextStepsTextInput.value = adminSettings.packing_next_steps_text;
   renderPublishMeta();
 }
 

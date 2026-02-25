@@ -23,6 +23,10 @@
         <div id="packingSlipError" class="notice error is-hidden"></div>
 
         <section id="packingSlipContent" class="is-hidden">
+          <div id="postPrintStatus" class="notice warn packing-slip-status">
+            Print your packing slip, then review the next steps below.
+          </div>
+
           <div class="packing-slip-meta">
             <div><strong>Slip ID:</strong> <span id="slipId"></span></div>
             <div><strong>Submission #:</strong> <span id="submissionId"></span></div>
@@ -47,6 +51,16 @@
             </thead>
             <tbody id="packingSlipItems"></tbody>
           </table>
+
+          <section class="packing-slip-info-block">
+            <h2>Ship To</h2>
+            <div id="shipToBlock" class="packing-slip-address"></div>
+          </section>
+
+          <section class="packing-slip-info-block">
+            <h2>What Happens Next</h2>
+            <div id="nextStepsBlock" class="packing-slip-next-steps"></div>
+          </section>
         </section>
 
         <div class="packing-slip-actions">

@@ -217,6 +217,15 @@ async function setDefaultSetting(key, value) {
   );
 }
 
+async function upsertSettingValue(key, value) {
+  await db.run(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    [key, String(value)]
+  );
+}
+
 async function getSettingValue(key, fallback) {
   try {
     const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [key]);
@@ -307,6 +316,82 @@ function toSettingBoolean(raw, fallback = true) {
   if (['1', 'true', 'yes', 'on', 'enabled'].includes(value)) return true;
   if (['0', 'false', 'no', 'off', 'disabled'].includes(value)) return false;
   return fallback;
+}
+
+const DEFAULT_PACKING_NEXT_STEPS_TEXT = [
+  '- We have received your submission. Thank you for submitting.',
+  '- Please allow 24-48 hours for payout via PayPal after shipment processing.',
+  '- Shipments submitted on Friday are expected to be paid by Tuesday evening at the latest.',
+  '- We do not process payouts on weekends (business days only).',
+].join('\n');
+
+const PACKING_SLIP_SETTING_LIMITS = {
+  ship_to_business_name: 120,
+  ship_to_contact_name: 120,
+  ship_to_address_line1: 120,
+  ship_to_address_line2: 120,
+  ship_to_city: 80,
+  ship_to_state: 80,
+  ship_to_postal_code: 24,
+  ship_to_country: 80,
+  packing_next_steps_text: 2000,
+};
+
+function sanitizeSettingText(raw, maxLength) {
+  return safeString(raw).slice(0, maxLength);
+}
+
+function normalizePackingSlipSettingsInput(input = {}) {
+  return {
+    ship_to_business_name: sanitizeSettingText(input.ship_to_business_name, PACKING_SLIP_SETTING_LIMITS.ship_to_business_name),
+    ship_to_contact_name: sanitizeSettingText(input.ship_to_contact_name, PACKING_SLIP_SETTING_LIMITS.ship_to_contact_name),
+    ship_to_address_line1: sanitizeSettingText(input.ship_to_address_line1, PACKING_SLIP_SETTING_LIMITS.ship_to_address_line1),
+    ship_to_address_line2: sanitizeSettingText(input.ship_to_address_line2, PACKING_SLIP_SETTING_LIMITS.ship_to_address_line2),
+    ship_to_city: sanitizeSettingText(input.ship_to_city, PACKING_SLIP_SETTING_LIMITS.ship_to_city),
+    ship_to_state: sanitizeSettingText(input.ship_to_state, PACKING_SLIP_SETTING_LIMITS.ship_to_state),
+    ship_to_postal_code: sanitizeSettingText(input.ship_to_postal_code, PACKING_SLIP_SETTING_LIMITS.ship_to_postal_code),
+    ship_to_country: sanitizeSettingText(input.ship_to_country, PACKING_SLIP_SETTING_LIMITS.ship_to_country),
+    packing_next_steps_text: sanitizeSettingText(
+      input.packing_next_steps_text,
+      PACKING_SLIP_SETTING_LIMITS.packing_next_steps_text
+    ),
+  };
+}
+
+async function loadPackingSlipSettings() {
+  const [
+    businessName,
+    contactName,
+    addressLine1,
+    addressLine2,
+    city,
+    state,
+    postalCode,
+    country,
+    nextStepsText,
+  ] = await Promise.all([
+    getSettingValue('ship_to_business_name', 'I_BuyGames Buylist'),
+    getSettingValue('ship_to_contact_name', ''),
+    getSettingValue('ship_to_address_line1', ''),
+    getSettingValue('ship_to_address_line2', ''),
+    getSettingValue('ship_to_city', ''),
+    getSettingValue('ship_to_state', ''),
+    getSettingValue('ship_to_postal_code', ''),
+    getSettingValue('ship_to_country', 'USA'),
+    getSettingValue('packing_next_steps_text', DEFAULT_PACKING_NEXT_STEPS_TEXT),
+  ]);
+
+  return normalizePackingSlipSettingsInput({
+    ship_to_business_name: businessName,
+    ship_to_contact_name: contactName,
+    ship_to_address_line1: addressLine1,
+    ship_to_address_line2: addressLine2,
+    ship_to_city: city,
+    ship_to_state: state,
+    ship_to_postal_code: postalCode,
+    ship_to_country: country,
+    packing_next_steps_text: nextStepsText,
+  });
 }
 
 function asPublicGame(row) {
@@ -828,6 +913,15 @@ async function initDb() {
 
   await setDefaultSetting('current_buylist_version', currentMonthVersion());
   await setDefaultSetting('show_price_change_highlights_public', 'true');
+  await setDefaultSetting('ship_to_business_name', 'I_BuyGames Buylist');
+  await setDefaultSetting('ship_to_contact_name', '');
+  await setDefaultSetting('ship_to_address_line1', '');
+  await setDefaultSetting('ship_to_address_line2', '');
+  await setDefaultSetting('ship_to_city', '');
+  await setDefaultSetting('ship_to_state', '');
+  await setDefaultSetting('ship_to_postal_code', '');
+  await setDefaultSetting('ship_to_country', 'USA');
+  await setDefaultSetting('packing_next_steps_text', DEFAULT_PACKING_NEXT_STEPS_TEXT);
 
   await withTransaction(async (tx) => {
     const rows = await tx.all('SELECT id, platform FROM games');
@@ -992,9 +1086,10 @@ app.get(
   '/api/admin/settings',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    const [currentBuylistVersionRaw, showHighlightsRaw] = await Promise.all([
+    const [currentBuylistVersionRaw, showHighlightsRaw, packingSlipSettings] = await Promise.all([
       getSettingValue('current_buylist_version', currentMonthVersion()),
       getSettingValue('show_price_change_highlights_public', 'true'),
+      loadPackingSlipSettings(),
     ]);
     const currentBuylistVersion = normalizeBuylistVersion(currentBuylistVersionRaw);
     const showPriceChangeHighlightsPublic = toSettingBoolean(showHighlightsRaw, true);
@@ -1008,6 +1103,15 @@ app.get(
       last_published_version: lastPublishedVersion,
       last_published_at: lastPublishedAt,
       comparison_baseline_version: comparisonBaselineVersion,
+      ship_to_business_name: packingSlipSettings.ship_to_business_name,
+      ship_to_contact_name: packingSlipSettings.ship_to_contact_name,
+      ship_to_address_line1: packingSlipSettings.ship_to_address_line1,
+      ship_to_address_line2: packingSlipSettings.ship_to_address_line2,
+      ship_to_city: packingSlipSettings.ship_to_city,
+      ship_to_state: packingSlipSettings.ship_to_state,
+      ship_to_postal_code: packingSlipSettings.ship_to_postal_code,
+      ship_to_country: packingSlipSettings.ship_to_country,
+      packing_next_steps_text: packingSlipSettings.packing_next_steps_text,
     });
   })
 );
@@ -1018,19 +1122,52 @@ app.put(
   asyncHandler(async (req, res) => {
     const { current_buylist_version, show_price_change_highlights_public } = req.body || {};
     const currentBuylistVersion = normalizeBuylistVersion(current_buylist_version);
-    const currentShowHighlightsRaw = await getSettingValue('show_price_change_highlights_public', 'true');
+    const [currentShowHighlightsRaw, existingPackingSlipSettings] = await Promise.all([
+      getSettingValue('show_price_change_highlights_public', 'true'),
+      loadPackingSlipSettings(),
+    ]);
     const showPriceChangeHighlightsPublic = toSettingBoolean(
       show_price_change_highlights_public,
       toSettingBoolean(currentShowHighlightsRaw, true)
     );
+    const body = req.body || {};
+    const hasField = (key) => Object.prototype.hasOwnProperty.call(body, key);
+    const packingSlipSettings = normalizePackingSlipSettingsInput({
+      ship_to_business_name: hasField('ship_to_business_name')
+        ? body.ship_to_business_name
+        : existingPackingSlipSettings.ship_to_business_name,
+      ship_to_contact_name: hasField('ship_to_contact_name')
+        ? body.ship_to_contact_name
+        : existingPackingSlipSettings.ship_to_contact_name,
+      ship_to_address_line1: hasField('ship_to_address_line1')
+        ? body.ship_to_address_line1
+        : existingPackingSlipSettings.ship_to_address_line1,
+      ship_to_address_line2: hasField('ship_to_address_line2')
+        ? body.ship_to_address_line2
+        : existingPackingSlipSettings.ship_to_address_line2,
+      ship_to_city: hasField('ship_to_city') ? body.ship_to_city : existingPackingSlipSettings.ship_to_city,
+      ship_to_state: hasField('ship_to_state') ? body.ship_to_state : existingPackingSlipSettings.ship_to_state,
+      ship_to_postal_code: hasField('ship_to_postal_code')
+        ? body.ship_to_postal_code
+        : existingPackingSlipSettings.ship_to_postal_code,
+      ship_to_country: hasField('ship_to_country') ? body.ship_to_country : existingPackingSlipSettings.ship_to_country,
+      packing_next_steps_text: hasField('packing_next_steps_text')
+        ? body.packing_next_steps_text
+        : existingPackingSlipSettings.packing_next_steps_text,
+    });
 
-    await db.run("UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = ?", [
-      currentBuylistVersion,
-      'current_buylist_version',
-    ]);
-    await db.run("UPDATE app_settings SET value = ?, updated_at = datetime('now') WHERE key = ?", [
-      showPriceChangeHighlightsPublic ? 'true' : 'false',
-      'show_price_change_highlights_public',
+    await Promise.all([
+      upsertSettingValue('current_buylist_version', currentBuylistVersion),
+      upsertSettingValue('show_price_change_highlights_public', showPriceChangeHighlightsPublic ? 'true' : 'false'),
+      upsertSettingValue('ship_to_business_name', packingSlipSettings.ship_to_business_name),
+      upsertSettingValue('ship_to_contact_name', packingSlipSettings.ship_to_contact_name),
+      upsertSettingValue('ship_to_address_line1', packingSlipSettings.ship_to_address_line1),
+      upsertSettingValue('ship_to_address_line2', packingSlipSettings.ship_to_address_line2),
+      upsertSettingValue('ship_to_city', packingSlipSettings.ship_to_city),
+      upsertSettingValue('ship_to_state', packingSlipSettings.ship_to_state),
+      upsertSettingValue('ship_to_postal_code', packingSlipSettings.ship_to_postal_code),
+      upsertSettingValue('ship_to_country', packingSlipSettings.ship_to_country),
+      upsertSettingValue('packing_next_steps_text', packingSlipSettings.packing_next_steps_text),
     ]);
 
     const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
@@ -1046,7 +1183,36 @@ app.put(
         last_published_version: lastPublishedVersion,
         last_published_at: lastPublishedAt,
         comparison_baseline_version: comparisonBaselineVersion,
+        ship_to_business_name: packingSlipSettings.ship_to_business_name,
+        ship_to_contact_name: packingSlipSettings.ship_to_contact_name,
+        ship_to_address_line1: packingSlipSettings.ship_to_address_line1,
+        ship_to_address_line2: packingSlipSettings.ship_to_address_line2,
+        ship_to_city: packingSlipSettings.ship_to_city,
+        ship_to_state: packingSlipSettings.ship_to_state,
+        ship_to_postal_code: packingSlipSettings.ship_to_postal_code,
+        ship_to_country: packingSlipSettings.ship_to_country,
+        packing_next_steps_text: packingSlipSettings.packing_next_steps_text,
       },
+    });
+  })
+);
+
+app.get(
+  '/api/packing-slip-config',
+  asyncHandler(async (req, res) => {
+    const settings = await loadPackingSlipSettings();
+    res.json({
+      shipTo: {
+        businessName: settings.ship_to_business_name,
+        contactName: settings.ship_to_contact_name,
+        addressLine1: settings.ship_to_address_line1,
+        addressLine2: settings.ship_to_address_line2,
+        city: settings.ship_to_city,
+        state: settings.ship_to_state,
+        postalCode: settings.ship_to_postal_code,
+        country: settings.ship_to_country,
+      },
+      nextStepsText: settings.packing_next_steps_text,
     });
   })
 );
