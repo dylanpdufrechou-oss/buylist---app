@@ -1,5 +1,6 @@
 const adminKeyInput = document.getElementById('adminKey');
 const connectBtn = document.getElementById('connect');
+const adminConnectNotice = document.getElementById('adminConnectNotice');
 const adminApp = document.getElementById('adminApp');
 const adminMessage = document.getElementById('adminMessage');
 
@@ -94,6 +95,8 @@ const submissionDetailBody = document.getElementById('submissionDetailBody');
 const toastContainer = document.getElementById('toastContainer');
 
 let adminKey = '';
+let isConnecting = false;
+const CONNECT_BUTTON_DEFAULT_TEXT = connectBtn ? connectBtn.textContent.trim() || 'Connect' : 'Connect';
 let games = [];
 let gameDrafts = new Map();
 const selectedGameIds = new Set();
@@ -192,6 +195,26 @@ function renderNotice(text, type = 'ok') {
     return;
   }
   adminMessage.innerHTML = `<div class="notice ${type}">${escapeHtml(text)}</div>`;
+}
+
+function renderConnectNotice(text, type = 'ok') {
+  if (!adminConnectNotice) return;
+  if (!text) {
+    adminConnectNotice.innerHTML = '';
+    return;
+  }
+  adminConnectNotice.innerHTML = `<div class="notice ${type}">${escapeHtml(text)}</div>`;
+}
+
+function setConnectUiState(isBusy) {
+  if (connectBtn) {
+    connectBtn.disabled = isBusy;
+    connectBtn.textContent = isBusy ? 'Connecting...' : CONNECT_BUTTON_DEFAULT_TEXT;
+    connectBtn.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+  }
+  if (adminKeyInput) {
+    adminKeyInput.disabled = isBusy;
+  }
 }
 
 function showToast(text, type = 'ok') {
@@ -1765,40 +1788,86 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 async function bootstrapAdmin() {
+  await loadRuntimeInfo();
+  await loadAdminSettings();
+
+  adminApp.style.display = 'block';
+  loadQuickAddDefaults();
+  clearGameFilters();
+  updateImportReplaceConfirmVisibility();
+  renderNotice('');
+
+  const sectionLoaders = [
+    ['games', () => loadGames()],
+    ['submissions', () => loadSubmissions(1)],
+    ['faq', () => loadFaqs()],
+  ];
+  const results = await Promise.allSettled(sectionLoaders.map(([, load]) => load()));
+  const failedSections = [];
+  for (let i = 0; i < results.length; i += 1) {
+    if (results[i].status !== 'rejected') continue;
+    const label = sectionLoaders[i][0];
+    const reason = results[i].reason;
+    failedSections.push({
+      label,
+      message: reason && reason.message ? reason.message : `${label} failed to load`,
+    });
+  }
+
+  if (failedSections.length > 0) {
+    const labels = failedSections.map((entry) => entry.label).join(', ');
+    renderConnectNotice(`Connected, but these sections failed to load: ${labels}.`, 'warn');
+    renderNotice(`Some sections failed to load (${labels}). Try Refresh for the affected section.`, 'warn');
+    return;
+  }
+
+  if (runtimeInfo.ephemeralStorage) {
+    renderConnectNotice(
+      'Connected. Warning: this deployment uses temporary storage. Local backup recovery is enabled for this browser.',
+      'warn'
+    );
+    return;
+  }
+  if (runtimeInfo.dbProvider === 'postgres') {
+    renderConnectNotice('Connected. Persistent storage is active (Postgres).');
+    return;
+  }
+  renderConnectNotice('Connected.');
+}
+
+async function handleConnect() {
+  if (isConnecting) return;
+  adminKey = adminKeyInput.value.trim();
+  if (!adminKey) {
+    renderConnectNotice('Enter your admin key.', 'error');
+    adminKeyInput.focus();
+    return;
+  }
+  isConnecting = true;
+  setConnectUiState(true);
+  renderConnectNotice('Connecting...', 'warn');
   try {
-    await loadRuntimeInfo();
-    await loadGames();
-    await loadSubmissions(1);
-    await loadFaqs();
-    await loadAdminSettings();
-    loadQuickAddDefaults();
-    clearGameFilters();
-    renderGamesTable();
-    updateImportReplaceConfirmVisibility();
-    adminApp.style.display = 'block';
-    if (runtimeInfo.ephemeralStorage) {
-      renderNotice(
-        'Connected. Warning: this deployment uses temporary storage. Local backup recovery is enabled for this browser.',
-        'warn'
-      );
-    } else if (runtimeInfo.dbProvider === 'postgres') {
-      renderNotice('Connected. Persistent storage is active (Postgres).');
-    } else {
-      renderNotice('Connected.');
-    }
+    await bootstrapAdmin();
   } catch (err) {
-    renderNotice(err.message, 'error');
+    adminApp.style.display = 'none';
+    renderConnectNotice(err.message || 'Could not connect to admin.', 'error');
+  } finally {
+    setConnectUiState(false);
+    isConnecting = false;
   }
 }
 
 connectBtn.addEventListener('click', () => {
-  adminKey = adminKeyInput.value.trim();
-  if (!adminKey) {
-    renderNotice('Enter your admin key.', 'error');
-    return;
-  }
-  bootstrapAdmin();
+  handleConnect();
 });
+
+if (adminKeyInput) {
+  adminKeyInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    handleConnect();
+  });
+}
 
 saveBuylistVersionBtn.addEventListener('click', async () => {
   try {

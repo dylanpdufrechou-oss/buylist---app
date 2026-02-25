@@ -255,6 +255,22 @@ h3 {
   box-shadow: var(--shadow);
 }
 
+.connect-card {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.connect-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+#adminConnectNotice .notice {
+  margin: 0;
+}
+
 .hero-panel {
   background: linear-gradient(125deg, rgba(20, 42, 98, 0.92), rgba(70, 36, 115, 0.85));
   border: 1px solid #6d7fd0;
@@ -1768,6 +1784,10 @@ a {
 
 @media (max-width: 860px) {
   .grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .connect-row {
     grid-template-columns: 1fr;
   }
 
