@@ -30,6 +30,9 @@ const MIN_TABLE_HEIGHT = 300;
 const MOBILE_PLATFORM_BREAKPOINT_QUERY = '(max-width: 640px)';
 const ALL_PLATFORMS_VALUE = '__all__';
 const TITLE_PREVIEW_HOLD_MS = 220;
+const PACKING_SLIP_SESSION_KEY = 'ibgPackingSlipPayload';
+const PACKING_SLIP_LOCAL_KEY = 'ibgPackingSlipPayloadBackup';
+const PACKING_SLIP_PATH = '/packing-slip.html';
 
 let games = [];
 const qtyMap = new Map();
@@ -359,173 +362,55 @@ function normalizeShipmentItems(items) {
     .filter((item) => item.quantity > 0);
 }
 
-function formatShipmentDate(value) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '-';
-  return parsed.toLocaleString();
-}
-
-function buildPackingSlipPrintHtml(shipment, seller) {
-  const sellerName = String(seller?.customerName || '').trim() || '-';
-  const sellerEmail = String(seller?.email || '').trim() || '-';
-  const sellerPhone = String(seller?.phone || '').trim() || '-';
-  const shipmentId = String(shipment?.id || '').trim() || '-';
-  const submissionId = String(shipment?.submissionId || '').trim() || '-';
-  const createdAt = formatShipmentDate(shipment?.createdAt);
+function buildPackingSlipPrintPayload(shipment, seller) {
   const items = normalizeShipmentItems(shipment?.items);
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-  const itemCount = items.length;
-  const rowsHtml = items.length
-    ? items
-        .map(
-          (item) => `
-            <tr>
-              <td>${escapeHtml(item.title)}</td>
-              <td class="qty">${item.quantity}</td>
-            </tr>
-          `
-        )
-        .join('')
-    : '<tr><td colspan="2">No items found.</td></tr>';
+  const currentPath = `${window.location.pathname || '/'}${window.location.search || ''}`;
+  const returnTo = currentPath && currentPath !== PACKING_SLIP_PATH ? currentPath : '/seller.html';
 
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Packing Slip ${escapeHtml(shipmentId)}</title>
-    <style>
-      @page { size: Letter; margin: 0.45in; }
-      * { box-sizing: border-box; }
-      html, body { margin: 0; padding: 0; color: #0f172a; font-family: "Segoe UI", Arial, Helvetica, sans-serif; }
-      body { background: #fff; }
-      .slip {
-        border: 1px solid #1e3a8a;
-        border-radius: 10px;
-        padding: 16px;
-      }
-      h1 {
-        margin: 0 0 4px;
-        font-size: 20px;
-        line-height: 1.2;
-      }
-      .subhead {
-        margin: 0 0 12px;
-        color: #334155;
-        font-size: 12px;
-      }
-      .meta {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px 14px;
-        margin-bottom: 12px;
-        font-size: 13px;
-      }
-      .meta strong { font-weight: 700; }
-      .summary {
-        border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        padding: 8px 10px;
-        margin-bottom: 12px;
-        background: #f8fafc;
-        font-size: 13px;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
-      }
-      th, td {
-        border: 1px solid #cbd5e1;
-        padding: 7px 8px;
-        font-size: 12px;
-        text-align: left;
-        vertical-align: top;
-      }
-      th {
-        background: #eff6ff;
-        color: #0f172a;
-        font-weight: 700;
-      }
-      th.qty, td.qty {
-        width: 88px;
-        text-align: center;
-        white-space: nowrap;
-      }
-      .note {
-        margin-top: 12px;
-        font-size: 12px;
-      }
-      @media print {
-        html, body { width: auto; height: auto; }
-      }
-    </style>
-  </head>
-  <body>
-    <article class="slip">
-      <h1>Packing Slip (Required)</h1>
-      <p class="subhead">Include this printed slip in your package to speed up receiving.</p>
-      <div class="meta">
-        <div><strong>Slip ID:</strong> ${escapeHtml(shipmentId)}</div>
-        <div><strong>Submission #:</strong> ${escapeHtml(submissionId)}</div>
-        <div><strong>Created:</strong> ${escapeHtml(createdAt)}</div>
-        <div><strong>Seller:</strong> ${escapeHtml(sellerName)}</div>
-        <div><strong>Email:</strong> ${escapeHtml(sellerEmail)}</div>
-        <div><strong>Phone:</strong> ${escapeHtml(sellerPhone)}</div>
-      </div>
-      <div class="summary">
-        <strong>Total Quantity:</strong> ${totalQuantity} &nbsp;|&nbsp; <strong>Total Titles:</strong> ${itemCount}
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Game Title</th>
-            <th class="qty">Qty</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowsHtml}
-        </tbody>
-      </table>
-      <p class="note"><strong>Receiver Note:</strong> Verify title + quantity count against this slip at intake.</p>
-    </article>
-  </body>
-</html>`;
+  return {
+    shipmentId: String(shipment?.id || '').trim() || '-',
+    submissionId: String(shipment?.submissionId || '').trim() || '-',
+    createdAt: shipment?.createdAt || new Date().toISOString(),
+    sellerName: String(seller?.customerName || '').trim() || '-',
+    sellerEmail: String(seller?.email || '').trim() || '-',
+    sellerPhone: String(seller?.phone || '').trim() || '-',
+    totalQuantity,
+    itemCount: items.length,
+    items,
+    returnTo,
+  };
+}
+
+function persistPackingSlipPayload(payload) {
+  const serialized = JSON.stringify(payload);
+  let stored = false;
+  try {
+    sessionStorage.setItem(PACKING_SLIP_SESSION_KEY, serialized);
+    stored = true;
+  } catch {
+    // Ignore session storage failures.
+  }
+  try {
+    localStorage.setItem(PACKING_SLIP_LOCAL_KEY, serialized);
+    stored = true;
+  } catch {
+    // Ignore local storage failures.
+  }
+  return stored;
 }
 
 function printPackingSlip(shipment, seller) {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
-  if (!printWindow) {
-    renderMessage('Enable popups in your browser to print the packing slip.', 'error');
+  const payload = buildPackingSlipPrintPayload(shipment, seller);
+  if (!payload.items.length) {
+    renderMessage('No games were found for this packing slip.', 'error');
     return;
   }
-
-  const html = buildPackingSlipPrintHtml(shipment, seller);
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-
-  let didPrint = false;
-  const triggerPrint = () => {
-    if (didPrint) return;
-    didPrint = true;
-    try {
-      printWindow.focus();
-      printWindow.print();
-    } catch {
-      renderMessage('Could not open the print dialog. Try printing again.', 'error');
-    }
-  };
-
-  printWindow.onload = triggerPrint;
-  printWindow.onafterprint = () => {
-    try {
-      printWindow.close();
-    } catch {
-      // Ignore close failures.
-    }
-  };
-  window.setTimeout(triggerPrint, 250);
+  if (!persistPackingSlipPayload(payload)) {
+    renderMessage('Could not prepare your packing slip. Please try again.', 'error');
+    return;
+  }
+  window.location.assign(PACKING_SLIP_PATH);
 }
 
 function renderShipment(shipment, seller) {

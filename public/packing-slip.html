@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>I_BuyGames - Packing Slip</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="packing-slip-page">
+    <main class="packing-slip-shell">
+      <article class="packing-slip-card">
+        <div class="packing-slip-head">
+          <h1>Packing Slip (Required)</h1>
+          <p class="packing-slip-subhead">Include this printed slip in your package to speed up receiving.</p>
+        </div>
+
+        <div id="packingSlipError" class="notice error is-hidden"></div>
+
+        <section id="packingSlipContent" class="is-hidden">
+          <div class="packing-slip-meta">
+            <div><strong>Slip ID:</strong> <span id="slipId"></span></div>
+            <div><strong>Submission #:</strong> <span id="submissionId"></span></div>
+            <div><strong>Created:</strong> <span id="createdAt"></span></div>
+            <div><strong>Seller:</strong> <span id="sellerName"></span></div>
+            <div><strong>Email:</strong> <span id="sellerEmail"></span></div>
+            <div><strong>Phone:</strong> <span id="sellerPhone"></span></div>
+          </div>
+
+          <div class="packing-slip-summary">
+            <strong>Total Quantity:</strong> <span id="totalQty">0</span>
+            <span class="packing-slip-divider">|</span>
+            <strong>Total Titles:</strong> <span id="totalTitles">0</span>
+          </div>
+
+          <table class="packing-slip-table">
+            <thead>
+              <tr>
+                <th>Game Title</th>
+                <th class="qty">Qty</th>
+              </tr>
+            </thead>
+            <tbody id="packingSlipItems"></tbody>
+          </table>
+        </section>
+
+        <div class="packing-slip-actions">
+          <button id="printSlipBtn" type="button">Print Packing Slip</button>
+          <a id="backToBuylist" href="/seller.html" class="btn-link btn-secondary">Back to Buylist</a>
+        </div>
+      </article>
+    </main>
+
+    <script src="/packing-slip.js"></script>
+  </body>
+</html>
