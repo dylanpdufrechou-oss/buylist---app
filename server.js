@@ -1062,16 +1062,123 @@ app.use(
   })
 );
 
+function getRuntimePayload() {
+  return {
+    isVercel,
+    ephemeralStorage: isEphemeralStorage,
+    persistentStorage,
+    dbProvider,
+    storagePath: usingPostgres ? 'postgres' : path.resolve(dataDir),
+  };
+}
+
+async function getAdminSettingsPayload() {
+  const [currentBuylistVersionRaw, showHighlightsRaw, packingSlipSettings] = await Promise.all([
+    getSettingValue('current_buylist_version', currentMonthVersion()),
+    getSettingValue('show_price_change_highlights_public', 'true'),
+    loadPackingSlipSettings(),
+  ]);
+  const currentBuylistVersion = normalizeBuylistVersion(currentBuylistVersionRaw);
+  const showPriceChangeHighlightsPublic = toSettingBoolean(showHighlightsRaw, true);
+  const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
+  const lastPublishedVersion = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.version : null;
+  const lastPublishedAt = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.published_at : null;
+  const comparisonBaselineVersion = snapshotMeta.baseline ? snapshotMeta.baseline.version : null;
+  return {
+    current_buylist_version: currentBuylistVersion,
+    show_price_change_highlights_public: showPriceChangeHighlightsPublic,
+    last_published_version: lastPublishedVersion,
+    last_published_at: lastPublishedAt,
+    comparison_baseline_version: comparisonBaselineVersion,
+    ship_to_business_name: packingSlipSettings.ship_to_business_name,
+    ship_to_contact_name: packingSlipSettings.ship_to_contact_name,
+    ship_to_address_line1: packingSlipSettings.ship_to_address_line1,
+    ship_to_address_line2: packingSlipSettings.ship_to_address_line2,
+    ship_to_city: packingSlipSettings.ship_to_city,
+    ship_to_state: packingSlipSettings.ship_to_state,
+    ship_to_postal_code: packingSlipSettings.ship_to_postal_code,
+    ship_to_country: packingSlipSettings.ship_to_country,
+    packing_next_steps_text: packingSlipSettings.packing_next_steps_text,
+  };
+}
+
+async function getAdminGamesPayload() {
+  return (await getGameRows(true)).map((row) => asPublicGame(row));
+}
+
+async function getAdminFaqsPayload() {
+  return (
+    await db.all(
+      `SELECT id, question, answer, sort_order, active, updated_at
+       FROM faqs
+       ORDER BY sort_order ASC, id ASC`
+    )
+  ).map((r) => ({
+    ...r,
+    active: Boolean(r.active),
+  }));
+}
+
+async function getAdminSubmissionsPayload(query = {}) {
+  const pageRaw = Number(query.page || 1);
+  const pageSizeRaw = Number(query.pageSize || 25);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+  const pageSize = Number.isFinite(pageSizeRaw) && pageSizeRaw > 0 ? Math.min(100, Math.floor(pageSizeRaw)) : 25;
+
+  const filter = buildSubmissionFilter(query);
+  const totalRow = await db.get(`SELECT COUNT(*) AS c FROM submissions s ${filter.whereSql}`, filter.params);
+  const total = Number(totalRow?.c || 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const offset = (safePage - 1) * pageSize;
+
+  const defaultVersion = normalizeBuylistVersion(await getSettingValue('current_buylist_version', currentMonthVersion()));
+  const rows = (
+    await db.all(
+      `SELECT s.id, s.customer_name, s.email, s.phone, s.created_at, s.updated_at, s.status, s.price_version, s.estimated_total_cents,
+              (SELECT COUNT(*) FROM submission_items si WHERE si.submission_id = s.id) AS item_count,
+              (SELECT COALESCE(SUM(si.quantity), 0) FROM submission_items si WHERE si.submission_id = s.id) AS total_qty
+       FROM submissions s
+       ${filter.whereSql}
+       ORDER BY ${filter.orderSql}
+       LIMIT ? OFFSET ?`,
+      [...filter.params, pageSize, offset]
+    )
+  ).map((row) => ({
+    id: row.id,
+    created_at: row.created_at,
+    updated_at: row.updated_at || row.created_at,
+    seller_name: row.customer_name,
+    email: row.email || '',
+    phone: row.phone || '',
+    item_count: Number(row.item_count || 0),
+    total_qty: Number(row.total_qty || 0),
+    estimated_total: centsToMoney(Number(row.estimated_total_cents || 0)),
+    estimated_total_cents: Number(row.estimated_total_cents || 0),
+    status: normalizeSubmissionStatus(row.status),
+    price_version: row.price_version || defaultVersion,
+  }));
+
+  return {
+    rows,
+    pagination: {
+      page: safePage,
+      pageSize,
+      total,
+      totalPages,
+    },
+    filters: {
+      status: filter.status,
+      q: filter.q,
+      sort: filter.sort,
+    },
+  };
+}
+
 app.get(
   '/api/runtime',
   asyncHandler(async (req, res) => {
-    res.json({
-      isVercel,
-      ephemeralStorage: isEphemeralStorage,
-      persistentStorage,
-      dbProvider,
-      storagePath: usingPostgres ? 'postgres' : path.resolve(dataDir),
-    });
+    res.json(getRuntimePayload());
   })
 );
 
@@ -1086,33 +1193,41 @@ app.get(
   '/api/admin/settings',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    const [currentBuylistVersionRaw, showHighlightsRaw, packingSlipSettings] = await Promise.all([
-      getSettingValue('current_buylist_version', currentMonthVersion()),
-      getSettingValue('show_price_change_highlights_public', 'true'),
-      loadPackingSlipSettings(),
-    ]);
-    const currentBuylistVersion = normalizeBuylistVersion(currentBuylistVersionRaw);
-    const showPriceChangeHighlightsPublic = toSettingBoolean(showHighlightsRaw, true);
-    const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
-    const lastPublishedVersion = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.version : null;
-    const lastPublishedAt = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.published_at : null;
-    const comparisonBaselineVersion = snapshotMeta.baseline ? snapshotMeta.baseline.version : null;
-    res.json({
-      current_buylist_version: currentBuylistVersion,
-      show_price_change_highlights_public: showPriceChangeHighlightsPublic,
-      last_published_version: lastPublishedVersion,
-      last_published_at: lastPublishedAt,
-      comparison_baseline_version: comparisonBaselineVersion,
-      ship_to_business_name: packingSlipSettings.ship_to_business_name,
-      ship_to_contact_name: packingSlipSettings.ship_to_contact_name,
-      ship_to_address_line1: packingSlipSettings.ship_to_address_line1,
-      ship_to_address_line2: packingSlipSettings.ship_to_address_line2,
-      ship_to_city: packingSlipSettings.ship_to_city,
-      ship_to_state: packingSlipSettings.ship_to_state,
-      ship_to_postal_code: packingSlipSettings.ship_to_postal_code,
-      ship_to_country: packingSlipSettings.ship_to_country,
-      packing_next_steps_text: packingSlipSettings.packing_next_steps_text,
+    res.json(await getAdminSettingsPayload());
+  })
+);
+
+app.get(
+  '/api/admin/bootstrap',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0',
     });
+    try {
+      const [settings, games, submissions, faqs] = await Promise.all([
+        getAdminSettingsPayload(),
+        getAdminGamesPayload(),
+        getAdminSubmissionsPayload({ page: 1, pageSize: 25, sort: 'newest', status: 'All', q: '' }),
+        getAdminFaqsPayload(),
+      ]);
+      res.json({
+        runtime: getRuntimePayload(),
+        settings,
+        games,
+        submissions,
+        faqs,
+      });
+    } catch (error) {
+      const message = error && error.message ? error.message : 'Could not load admin bootstrap.';
+      const status = Number(error && error.status);
+      res.status(status >= 400 && status < 600 ? status : 500).json({
+        error: message,
+        source: 'bootstrap',
+      });
+    }
   })
 );
 
@@ -1332,8 +1447,7 @@ app.get(
       Pragma: 'no-cache',
       Expires: '0',
     });
-    const rows = (await getGameRows(true)).map((row) => asPublicGame(row));
-    res.json(rows);
+    res.json(await getAdminGamesPayload());
   })
 );
 
@@ -1738,59 +1852,7 @@ app.get(
   '/api/admin/submissions',
   requireAdmin,
   asyncHandler(async (req, res) => {
-  const pageRaw = Number(req.query.page || 1);
-  const pageSizeRaw = Number(req.query.pageSize || 25);
-  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
-  const pageSize = Number.isFinite(pageSizeRaw) && pageSizeRaw > 0 ? Math.min(100, Math.floor(pageSizeRaw)) : 25;
-
-  const filter = buildSubmissionFilter(req.query);
-  const totalRow = await db.get(`SELECT COUNT(*) AS c FROM submissions s ${filter.whereSql}`, filter.params);
-  const total = Number(totalRow?.c || 0);
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const offset = (safePage - 1) * pageSize;
-
-  const defaultVersion = normalizeBuylistVersion(await getSettingValue('current_buylist_version', currentMonthVersion()));
-  const rows = (
-    await db.all(
-      `SELECT s.id, s.customer_name, s.email, s.phone, s.created_at, s.updated_at, s.status, s.price_version, s.estimated_total_cents,
-              (SELECT COUNT(*) FROM submission_items si WHERE si.submission_id = s.id) AS item_count,
-              (SELECT COALESCE(SUM(si.quantity), 0) FROM submission_items si WHERE si.submission_id = s.id) AS total_qty
-       FROM submissions s
-       ${filter.whereSql}
-       ORDER BY ${filter.orderSql}
-       LIMIT ? OFFSET ?`,
-      [...filter.params, pageSize, offset]
-    )
-  ).map((row) => ({
-    id: row.id,
-    created_at: row.created_at,
-    updated_at: row.updated_at || row.created_at,
-    seller_name: row.customer_name,
-    email: row.email || '',
-    phone: row.phone || '',
-    item_count: Number(row.item_count || 0),
-    total_qty: Number(row.total_qty || 0),
-    estimated_total: centsToMoney(Number(row.estimated_total_cents || 0)),
-    estimated_total_cents: Number(row.estimated_total_cents || 0),
-    status: normalizeSubmissionStatus(row.status),
-    price_version: row.price_version || defaultVersion,
-  }));
-
-  res.json({
-    rows,
-    pagination: {
-      page: safePage,
-      pageSize,
-      total,
-      totalPages,
-    },
-    filters: {
-      status: filter.status,
-      q: filter.q,
-      sort: filter.sort,
-    },
-  });
+  res.json(await getAdminSubmissionsPayload(req.query));
   })
 );
 
@@ -1985,17 +2047,7 @@ app.get(
   '/api/admin/faqs',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    const rows = (
-      await db.all(
-        `SELECT id, question, answer, sort_order, active, updated_at
-         FROM faqs
-         ORDER BY sort_order ASC, id ASC`
-      )
-    ).map((r) => ({
-      ...r,
-      active: Boolean(r.active),
-    }));
-    res.json(rows);
+    res.json(await getAdminFaqsPayload());
   })
 );
 

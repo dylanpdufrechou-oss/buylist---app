@@ -197,13 +197,25 @@ function renderNotice(text, type = 'ok') {
   adminMessage.innerHTML = `<div class="notice ${type}">${escapeHtml(text)}</div>`;
 }
 
-function renderConnectNotice(text, type = 'ok') {
+function renderConnectNotice(text, type = 'ok', options = {}) {
   if (!adminConnectNotice) return;
   if (!text) {
     adminConnectNotice.innerHTML = '';
     return;
   }
-  adminConnectNotice.innerHTML = `<div class="notice ${type}">${escapeHtml(text)}</div>`;
+  const showRetry = Boolean(options.retry);
+  const retryButton = showRetry
+    ? '<button type="button" id="adminConnectRetryBtn" class="secondary connect-retry-btn">Retry</button>'
+    : '';
+  adminConnectNotice.innerHTML = `<div class="notice ${type}"><div class="connect-notice-inline">${escapeHtml(text)} ${retryButton}</div></div>`;
+  if (showRetry) {
+    const retryBtn = document.getElementById('adminConnectRetryBtn');
+    if (retryBtn) {
+      retryBtn.addEventListener('click', () => {
+        handleConnect();
+      });
+    }
+  }
 }
 
 function setConnectUiState(isBusy) {
@@ -465,10 +477,120 @@ async function adminFetch(url, options = {}) {
   });
 
   if (res.status === 401) {
-    throw new Error('Unauthorized. Check your admin key.');
+    const unauthorizedError = new Error('Unauthorized. Check your admin key.');
+    unauthorizedError.status = 401;
+    unauthorizedError.source = 'auth';
+    throw unauthorizedError;
   }
 
   return res;
+}
+
+function formatLoadError(err, fallback = 'Request failed.') {
+  if (!err) return fallback;
+  const base = String(err.message || fallback).trim() || fallback;
+  const source = String(err.source || '').trim();
+  if (!source || source === 'auth') return base;
+  return `${source}: ${base}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetryRequest(error, retryableStatuses) {
+  if (!error) return false;
+  if (error.name === 'AbortError') return true;
+  if (typeof error.status === 'number' && retryableStatuses.includes(error.status)) return true;
+  if (error.status) return false;
+  return true;
+}
+
+function assertObjectPayload(payload, source, fallbackMessage) {
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) return payload;
+  const err = new Error(fallbackMessage || 'Invalid response payload.');
+  err.source = source;
+  throw err;
+}
+
+function assertArrayPayload(payload, source, fallbackMessage) {
+  if (Array.isArray(payload)) return payload;
+  const err = new Error(fallbackMessage || 'Invalid response payload.');
+  err.source = source;
+  throw err;
+}
+
+async function requestAdminJson(url, options = {}) {
+  const {
+    source = 'request',
+    timeoutMs = 12000,
+    retries = 0,
+    retryableStatuses = [429, 500, 502, 503, 504],
+    ...fetchOptions
+  } = options;
+  let attempt = 0;
+  let lastError = null;
+  while (attempt <= retries) {
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await adminFetch(url, {
+        cache: 'no-store',
+        ...fetchOptions,
+        signal: controller.signal,
+      });
+      const raw = await res.text();
+      let body = null;
+      if (raw) {
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          const parseErr = new Error('Server returned invalid JSON.');
+          parseErr.source = source;
+          throw parseErr;
+        }
+      }
+      if (!res.ok) {
+        const responseError = new Error(
+          body && typeof body === 'object' && body.error ? String(body.error) : `Request failed (${res.status})`
+        );
+        responseError.status = res.status;
+        responseError.source =
+          body && typeof body === 'object' && body.source ? String(body.source) : source;
+        throw responseError;
+      }
+      clearTimeout(timeoutHandle);
+      return body;
+    } catch (error) {
+      clearTimeout(timeoutHandle);
+      if (error.name === 'AbortError') {
+        const timeoutError = new Error(`Request timed out after ${timeoutMs / 1000}s.`);
+        timeoutError.status = 408;
+        timeoutError.source = source;
+        lastError = timeoutError;
+      } else {
+        if (!error.source) error.source = source;
+        lastError = error;
+      }
+      if (attempt >= retries || !shouldRetryRequest(lastError, retryableStatuses)) {
+        throw lastError;
+      }
+      const backoffMs = Math.min(2200, 350 * 2 ** attempt) + Math.floor(Math.random() * 160);
+      await sleep(backoffMs);
+    }
+    attempt += 1;
+  }
+  throw lastError || new Error('Request failed.');
+}
+
+function applyRuntimeInfoPayload(payload) {
+  const body = assertObjectPayload(payload || {}, 'runtime', 'Invalid runtime payload.');
+  runtimeInfo = {
+    isVercel: Boolean(body.isVercel),
+    ephemeralStorage: Boolean(body.ephemeralStorage),
+    persistentStorage: body.persistentStorage !== false,
+    dbProvider: String(body.dbProvider || 'sqlite'),
+  };
 }
 
 async function loadRuntimeInfo() {
@@ -476,12 +598,7 @@ async function loadRuntimeInfo() {
     const res = await fetch(`/api/runtime?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return;
     const body = await res.json();
-    runtimeInfo = {
-      isVercel: Boolean(body && body.isVercel),
-      ephemeralStorage: Boolean(body && body.ephemeralStorage),
-      persistentStorage: body?.persistentStorage !== false,
-      dbProvider: String(body?.dbProvider || 'sqlite'),
-    };
+    applyRuntimeInfoPayload(body);
   } catch {
     runtimeInfo = { isVercel: false, ephemeralStorage: false, persistentStorage: true, dbProvider: 'sqlite' };
   }
@@ -1163,27 +1280,24 @@ function hideImportPreview() {
   if (importPreviewRows) importPreviewRows.innerHTML = '';
 }
 
-async function loadAdminSettings() {
-  const res = await adminFetch('/api/admin/settings');
-  const settings = await res.json();
-  if (!res.ok) throw new Error(settings.error || 'Could not load settings');
-
-  const nextCurrentVersion = settings.current_buylist_version || '';
+function applyAdminSettingsData(settings, fallback = {}) {
+  const source = assertObjectPayload(settings, 'settings', 'Invalid settings payload.');
+  const nextCurrentVersion = source.current_buylist_version || '';
   adminSettings = {
     current_buylist_version: nextCurrentVersion,
-    show_price_change_highlights_public: settings.show_price_change_highlights_public !== false,
-    ship_to_business_name: settings.ship_to_business_name || '',
-    ship_to_contact_name: settings.ship_to_contact_name || '',
-    ship_to_address_line1: settings.ship_to_address_line1 || '',
-    ship_to_address_line2: settings.ship_to_address_line2 || '',
-    ship_to_city: settings.ship_to_city || '',
-    ship_to_state: settings.ship_to_state || '',
-    ship_to_postal_code: settings.ship_to_postal_code || '',
-    ship_to_country: settings.ship_to_country || '',
-    packing_next_steps_text: settings.packing_next_steps_text || '',
-    last_published_version: settings.last_published_version || null,
-    last_published_at: settings.last_published_at || null,
-    comparison_baseline_version: settings.comparison_baseline_version || null,
+    show_price_change_highlights_public: source.show_price_change_highlights_public !== false,
+    ship_to_business_name: source.ship_to_business_name || fallback.ship_to_business_name || '',
+    ship_to_contact_name: source.ship_to_contact_name || fallback.ship_to_contact_name || '',
+    ship_to_address_line1: source.ship_to_address_line1 || fallback.ship_to_address_line1 || '',
+    ship_to_address_line2: source.ship_to_address_line2 || fallback.ship_to_address_line2 || '',
+    ship_to_city: source.ship_to_city || fallback.ship_to_city || '',
+    ship_to_state: source.ship_to_state || fallback.ship_to_state || '',
+    ship_to_postal_code: source.ship_to_postal_code || fallback.ship_to_postal_code || '',
+    ship_to_country: source.ship_to_country || fallback.ship_to_country || '',
+    packing_next_steps_text: source.packing_next_steps_text || fallback.packing_next_steps_text || '',
+    last_published_version: source.last_published_version || null,
+    last_published_at: source.last_published_at || null,
+    comparison_baseline_version: source.comparison_baseline_version || null,
   };
   currentBuylistVersionInput.value = nextCurrentVersion;
   if (shipToBusinessNameInput) shipToBusinessNameInput.value = adminSettings.ship_to_business_name;
@@ -1196,6 +1310,15 @@ async function loadAdminSettings() {
   if (shipToCountryInput) shipToCountryInput.value = adminSettings.ship_to_country;
   if (packingNextStepsTextInput) packingNextStepsTextInput.value = adminSettings.packing_next_steps_text;
   renderPublishMeta();
+}
+
+async function loadAdminSettings(options = {}) {
+  const settings = await requestAdminJson('/api/admin/settings', {
+    source: 'settings',
+    timeoutMs: options.timeoutMs || 12000,
+    retries: Number.isInteger(options.retries) ? options.retries : 0,
+  });
+  applyAdminSettingsData(assertObjectPayload(settings, 'settings', 'Invalid settings response.'));
 }
 
 async function saveAdminSettings() {
@@ -1221,36 +1344,8 @@ async function saveAdminSettings() {
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || 'Could not save settings');
-
-  const settings = body.settings || {};
-  const nextCurrentVersion = settings.current_buylist_version || currentBuylistVersionInput.value;
-  adminSettings = {
-    current_buylist_version: nextCurrentVersion,
-    show_price_change_highlights_public: settings.show_price_change_highlights_public !== false,
-    ship_to_business_name: settings.ship_to_business_name || payload.ship_to_business_name || '',
-    ship_to_contact_name: settings.ship_to_contact_name || payload.ship_to_contact_name || '',
-    ship_to_address_line1: settings.ship_to_address_line1 || payload.ship_to_address_line1 || '',
-    ship_to_address_line2: settings.ship_to_address_line2 || payload.ship_to_address_line2 || '',
-    ship_to_city: settings.ship_to_city || payload.ship_to_city || '',
-    ship_to_state: settings.ship_to_state || payload.ship_to_state || '',
-    ship_to_postal_code: settings.ship_to_postal_code || payload.ship_to_postal_code || '',
-    ship_to_country: settings.ship_to_country || payload.ship_to_country || '',
-    packing_next_steps_text: settings.packing_next_steps_text || payload.packing_next_steps_text || '',
-    last_published_version: settings.last_published_version || null,
-    last_published_at: settings.last_published_at || null,
-    comparison_baseline_version: settings.comparison_baseline_version || null,
-  };
-  currentBuylistVersionInput.value = nextCurrentVersion;
-  if (shipToBusinessNameInput) shipToBusinessNameInput.value = adminSettings.ship_to_business_name;
-  if (shipToContactNameInput) shipToContactNameInput.value = adminSettings.ship_to_contact_name;
-  if (shipToAddressLine1Input) shipToAddressLine1Input.value = adminSettings.ship_to_address_line1;
-  if (shipToAddressLine2Input) shipToAddressLine2Input.value = adminSettings.ship_to_address_line2;
-  if (shipToCityInput) shipToCityInput.value = adminSettings.ship_to_city;
-  if (shipToStateInput) shipToStateInput.value = adminSettings.ship_to_state;
-  if (shipToPostalCodeInput) shipToPostalCodeInput.value = adminSettings.ship_to_postal_code;
-  if (shipToCountryInput) shipToCountryInput.value = adminSettings.ship_to_country;
-  if (packingNextStepsTextInput) packingNextStepsTextInput.value = adminSettings.packing_next_steps_text;
-  renderPublishMeta();
+  const settings = assertObjectPayload(body.settings || {}, 'settings', 'Invalid settings save response.');
+  applyAdminSettingsData(settings, payload);
 }
 
 async function publishBuylistSnapshot(overwrite = false) {
@@ -1290,14 +1385,16 @@ async function publishBuylistSnapshot(overwrite = false) {
 
 async function loadGames() {
   const fetchGames = async () => {
-    const res = await adminFetch(`/api/admin/games?t=${Date.now()}`, {
-      cache: 'no-store',
+    const payload = await requestAdminJson(`/api/admin/games?t=${Date.now()}`, {
+      source: 'games',
+      timeoutMs: 12000,
+      retries: 1,
     });
-    return res.json();
+    return assertArrayPayload(payload, 'games', 'Invalid games response format.');
   };
 
   let rows = await fetchGames();
-  let nextGames = Array.isArray(rows) ? rows : [];
+  let nextGames = rows;
   const snapshot = loadLocalBuylistSnapshot();
   if (shouldAttemptEphemeralRestore(nextGames, snapshot)) {
     hasAttemptedEphemeralRestore = true;
@@ -1305,7 +1402,7 @@ async function loadGames() {
       const restored = await restoreFromLocalSnapshot(snapshot);
       if (restored) {
         rows = await fetchGames();
-        nextGames = Array.isArray(rows) ? rows : [];
+        nextGames = rows;
         games = nextGames;
         markBuylistUpdated();
         showToast('Recovered buylist from local backup.', 'warn');
@@ -1462,16 +1559,11 @@ function renderSubmissionPagination() {
   submissionsPaginationWrap.appendChild(info);
 }
 
-async function loadSubmissions(page = 1) {
-  submissionsState.page = page;
-  const query = submissionFiltersQueryString(true);
-
-  const res = await adminFetch(`/api/admin/submissions?${query}`);
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error || 'Could not load submissions');
-
-  const pagination = body.pagination || {};
-  const filters = body.filters || {};
+function applySubmissionsPayload(payload) {
+  const body = assertObjectPayload(payload, 'submissions', 'Invalid submissions payload.');
+  const rows = assertArrayPayload(body.rows, 'submissions', 'Invalid submissions rows payload.');
+  const pagination = assertObjectPayload(body.pagination, 'submissions', 'Invalid submissions pagination payload.');
+  const filters = assertObjectPayload(body.filters, 'submissions', 'Invalid submissions filters payload.');
   submissionsState.page = Number(pagination.page || 1);
   submissionsState.pageSize = Number(pagination.pageSize || 25);
   submissionsState.total = Number(pagination.total || 0);
@@ -1484,8 +1576,19 @@ async function loadSubmissions(page = 1) {
   submissionsSearchInput.value = submissionsState.q;
   if (submissionsSortInput) submissionsSortInput.value = submissionsState.sort;
 
-  renderSubmissionsTable(body.rows || []);
+  renderSubmissionsTable(rows);
   renderSubmissionPagination();
+}
+
+async function loadSubmissions(page = 1) {
+  submissionsState.page = page;
+  const query = submissionFiltersQueryString(true);
+  const body = await requestAdminJson(`/api/admin/submissions?${query}`, {
+    source: 'submissions',
+    timeoutMs: 12000,
+    retries: 1,
+  });
+  applySubmissionsPayload(body);
 }
 
 function closeSubmissionDetailModal() {
@@ -1645,10 +1748,7 @@ async function openSubmissionDetail(id) {
   renderSubmissionDetail(body);
 }
 
-async function loadFaqs() {
-  const res = await adminFetch('/api/admin/faqs');
-  faqs = await res.json();
-
+function renderFaqsTable() {
   if (faqs.length === 0) {
     faqWrap.innerHTML = '<p class="muted">No FAQs yet.</p>';
     return;
@@ -1737,6 +1837,16 @@ async function loadFaqs() {
   });
 }
 
+async function loadFaqs() {
+  const payload = await requestAdminJson('/api/admin/faqs', {
+    source: 'faqs',
+    timeoutMs: 12000,
+    retries: 1,
+  });
+  faqs = assertArrayPayload(payload, 'faqs', 'Invalid FAQ response format.');
+  renderFaqsTable();
+}
+
 function gameFilterQueryString() {
   readGameFiltersFromInputs();
   const params = new URLSearchParams();
@@ -1787,40 +1897,31 @@ window.addEventListener('beforeunload', (e) => {
   e.returnValue = '';
 });
 
-async function bootstrapAdmin() {
-  await loadRuntimeInfo();
-  await loadAdminSettings();
+async function bootstrapAdmin(options = {}) {
+  const showConnectNotice = options.showConnectNotice !== false;
+  const resetFilters = options.resetFilters !== false;
+  const bootstrap = await requestAdminJson('/api/admin/bootstrap', {
+    source: 'bootstrap',
+    timeoutMs: 12000,
+    retries: 2,
+  });
+  const payload = assertObjectPayload(bootstrap, 'bootstrap', 'Invalid bootstrap payload.');
+  applyRuntimeInfoPayload(assertObjectPayload(payload.runtime, 'runtime', 'Invalid runtime payload.'));
+  applyAdminSettingsData(assertObjectPayload(payload.settings, 'settings', 'Invalid settings payload.'));
+  games = assertArrayPayload(payload.games, 'games', 'Invalid games payload.');
+  resetDraftsFromGames();
+  syncGameFilterOptions();
+  if (resetFilters) clearGameFilters();
+  renderGamesTable();
+  applySubmissionsPayload(assertObjectPayload(payload.submissions, 'submissions', 'Invalid submissions payload.'));
+  faqs = assertArrayPayload(payload.faqs, 'faqs', 'Invalid FAQ payload.');
+  renderFaqsTable();
 
   adminApp.style.display = 'block';
   loadQuickAddDefaults();
-  clearGameFilters();
   updateImportReplaceConfirmVisibility();
   renderNotice('');
-
-  const sectionLoaders = [
-    ['games', () => loadGames()],
-    ['submissions', () => loadSubmissions(1)],
-    ['faq', () => loadFaqs()],
-  ];
-  const results = await Promise.allSettled(sectionLoaders.map(([, load]) => load()));
-  const failedSections = [];
-  for (let i = 0; i < results.length; i += 1) {
-    if (results[i].status !== 'rejected') continue;
-    const label = sectionLoaders[i][0];
-    const reason = results[i].reason;
-    failedSections.push({
-      label,
-      message: reason && reason.message ? reason.message : `${label} failed to load`,
-    });
-  }
-
-  if (failedSections.length > 0) {
-    const labels = failedSections.map((entry) => entry.label).join(', ');
-    renderConnectNotice(`Connected, but these sections failed to load: ${labels}.`, 'warn');
-    renderNotice(`Some sections failed to load (${labels}). Try Refresh for the affected section.`, 'warn');
-    return;
-  }
-
+  if (!showConnectNotice) return;
   if (runtimeInfo.ephemeralStorage) {
     renderConnectNotice(
       'Connected. Warning: this deployment uses temporary storage. Local backup recovery is enabled for this browser.',
@@ -1833,6 +1934,39 @@ async function bootstrapAdmin() {
     return;
   }
   renderConnectNotice('Connected.');
+}
+
+async function reloadAdminData() {
+  try {
+    await bootstrapAdmin({ showConnectNotice: false, resetFilters: false });
+    renderNotice('Data refreshed.');
+    return;
+  } catch (bootstrapError) {
+    const sectionLoaders = [
+      ['settings', () => loadAdminSettings({ retries: 1 })],
+      ['games', () => loadGames()],
+      ['submissions', () => loadSubmissions(submissionsState.page || 1)],
+      ['faqs', () => loadFaqs()],
+    ];
+    const results = await Promise.allSettled(sectionLoaders.map(([, fn]) => fn()));
+    const failed = [];
+    for (let i = 0; i < results.length; i += 1) {
+      if (results[i].status !== 'rejected') continue;
+      failed.push({
+        section: sectionLoaders[i][0],
+        reason: formatLoadError(results[i].reason, `${sectionLoaders[i][0]} failed to load`),
+      });
+    }
+    if (failed.length === 0) {
+      renderNotice('Data refreshed.');
+      return;
+    }
+    const labels = failed.map((entry) => entry.section).join(', ');
+    const details = failed[0] ? failed[0].reason : formatLoadError(bootstrapError, 'Refresh failed.');
+    const err = new Error(`Refresh incomplete. Failed sections: ${labels}. ${details}`);
+    err.source = 'refresh';
+    throw err;
+  }
 }
 
 async function handleConnect() {
@@ -1850,7 +1984,7 @@ async function handleConnect() {
     await bootstrapAdmin();
   } catch (err) {
     adminApp.style.display = 'none';
-    renderConnectNotice(err.message || 'Could not connect to admin.', 'error');
+    renderConnectNotice(formatLoadError(err, 'Could not connect to admin.'), 'error', { retry: true });
   } finally {
     setConnectUiState(false);
     isConnecting = false;
@@ -1928,13 +2062,9 @@ addGameForm.addEventListener('submit', async (e) => {
 refreshGamesBtn.addEventListener('click', async () => {
   if (getDirtyCount() > 0 && !confirm('You have unsaved changes. Refresh and discard them?')) return;
   try {
-    await loadGames();
-    await loadSubmissions(submissionsState.page);
-    await loadFaqs();
-    await loadAdminSettings();
-    renderNotice('Data refreshed.');
+    await reloadAdminData();
   } catch (err) {
-    renderNotice(err.message, 'error');
+    renderNotice(formatLoadError(err, 'Could not refresh admin data.'), 'error');
   }
 });
 

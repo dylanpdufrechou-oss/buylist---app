@@ -271,6 +271,19 @@ h3 {
   margin: 0;
 }
 
+.connect-notice-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.connect-retry-btn {
+  min-height: 32px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.76rem;
+}
+
 .hero-panel {
   background: linear-gradient(125deg, rgba(20, 42, 98, 0.92), rgba(70, 36, 115, 0.85));
   border: 1px solid #6d7fd0;
