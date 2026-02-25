@@ -1197,14 +1197,47 @@ input[type='checkbox'] {
 
 .games-filter-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 0.8fr 0.8fr auto;
+  grid-template-columns: minmax(180px, 2.2fr) repeat(7, minmax(0, 1fr)) auto;
   gap: 0.5rem;
   align-items: center;
+}
+
+.games-rows-control {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.73rem;
+  color: var(--ink-dim);
+}
+
+.games-rows-control span {
+  white-space: nowrap;
+}
+
+.games-rows-control select {
+  min-width: 0;
 }
 
 .games-filter-count {
   margin-top: 0.5rem;
   font-size: 0.85rem;
+}
+
+.games-pagination {
+  margin-top: 0.7rem;
+  align-items: center;
+}
+
+.games-pagination-size {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+}
+
+.games-page-size-select {
+  width: auto;
+  min-width: 86px;
 }
 
 .bulk-toolbar {

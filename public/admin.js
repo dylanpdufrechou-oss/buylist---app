@@ -41,8 +41,10 @@ const gamesFilterActiveInput = document.getElementById('gamesFilterActive');
 const gamesFilterChangeInput = document.getElementById('gamesFilterChange');
 const gamesFilterPriceMinInput = document.getElementById('gamesFilterPriceMin');
 const gamesFilterPriceMaxInput = document.getElementById('gamesFilterPriceMax');
+const gamesRowsPerPageInput = document.getElementById('gamesRowsPerPage');
 const clearGameFiltersBtn = document.getElementById('clearGameFilters');
 const gamesFilterCount = document.getElementById('gamesFilterCount');
+const gamesPaginationWrap = document.getElementById('gamesPagination');
 
 const bulkToolbar = document.getElementById('bulkToolbar');
 const bulkSelectedCount = document.getElementById('bulkSelectedCount');
@@ -119,6 +121,9 @@ const EPHEMERAL_SNAPSHOT_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
 const EPHEMERAL_RESET_MAX_SERVER_ROWS = 12;
 const EPHEMERAL_RESTORE_MIN_SNAPSHOT_ROWS = 10;
 const EPHEMERAL_RESTORE_MIN_DIFF = 5;
+const GAMES_ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
+const GAMES_ROWS_PER_PAGE_DEFAULT = 25;
+const GAMES_ROWS_PER_PAGE_STORAGE_KEY = 'adminGamesRowsPerPage';
 const DEFAULT_SEED_TITLES = new Set([
   'Wii Sports Resort',
   'Metal Gear Solid 3: Subsistence',
@@ -138,6 +143,10 @@ const gameFilters = {
   change: 'all',
   minPrice: '',
   maxPrice: '',
+};
+let gamesTableState = {
+  page: 1,
+  pageSize: loadGamesRowsPerPagePreference(),
 };
 
 let submissionsState = {
@@ -600,6 +609,33 @@ function syncGameFilterOptions() {
   }
 }
 
+function normalizeGamesPageSize(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return GAMES_ROWS_PER_PAGE_DEFAULT;
+  return GAMES_ROWS_PER_PAGE_OPTIONS.includes(parsed) ? parsed : GAMES_ROWS_PER_PAGE_DEFAULT;
+}
+
+function loadGamesRowsPerPagePreference() {
+  try {
+    return normalizeGamesPageSize(localStorage.getItem(GAMES_ROWS_PER_PAGE_STORAGE_KEY));
+  } catch (_) {
+    return GAMES_ROWS_PER_PAGE_DEFAULT;
+  }
+}
+
+function saveGamesRowsPerPagePreference(pageSize) {
+  try {
+    localStorage.setItem(GAMES_ROWS_PER_PAGE_STORAGE_KEY, String(normalizeGamesPageSize(pageSize)));
+  } catch (_) {
+    // Ignore localStorage write failures.
+  }
+}
+
+function syncGamesRowsPerPageInput() {
+  if (!gamesRowsPerPageInput) return;
+  gamesRowsPerPageInput.value = String(normalizeGamesPageSize(gamesTableState.pageSize));
+}
+
 function readGameFiltersFromInputs() {
   gameFilters.search = String(gamesSearchInput?.value || '').trim().toLowerCase();
   gameFilters.platform = String(gamesFilterPlatformInput?.value || 'all');
@@ -687,12 +723,79 @@ function updateSaveChangesUi() {
   }
 }
 
-function updateFilterCount() {
-  const visible = getFilteredDrafts().length;
-  const total = getVisibleNonDeletedCount();
+function updateFilterCount({ start = 0, end = 0, filteredTotal = 0, total = 0 } = {}) {
   if (gamesFilterCount) {
-    gamesFilterCount.textContent = `Showing ${visible} of ${total}`;
+    const suffix = filteredTotal !== total ? ` (filtered from ${total})` : '';
+    if (filteredTotal <= 0) {
+      gamesFilterCount.textContent = `Showing 0 of ${filteredTotal}${suffix}`;
+      return;
+    }
+    gamesFilterCount.textContent = `Showing ${start}\u2013${end} of ${filteredTotal}${suffix}`;
   }
+}
+
+function renderGamesPagination({ page, pageSize, totalRows, totalPages }) {
+  if (!gamesPaginationWrap) return;
+  gamesPaginationWrap.innerHTML = '';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
+  prevBtn.className = 'secondary';
+  prevBtn.textContent = 'Previous';
+  prevBtn.disabled = page <= 1 || totalRows <= 0;
+
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.className = 'secondary';
+  nextBtn.textContent = 'Next';
+  nextBtn.disabled = page >= totalPages || totalRows <= 0;
+
+  const pageInfo = document.createElement('span');
+  pageInfo.className = 'muted';
+  pageInfo.textContent = `Page ${page} of ${totalPages}`;
+
+  const totalInfo = document.createElement('span');
+  totalInfo.className = 'muted';
+  totalInfo.textContent = `${totalRows} total`;
+
+  prevBtn.addEventListener('click', () => {
+    gamesTableState.page = Math.max(1, gamesTableState.page - 1);
+    renderGamesTable();
+  });
+
+  nextBtn.addEventListener('click', () => {
+    gamesTableState.page = Math.min(totalPages, gamesTableState.page + 1);
+    renderGamesTable();
+  });
+
+  gamesPaginationWrap.appendChild(prevBtn);
+  gamesPaginationWrap.appendChild(nextBtn);
+  gamesPaginationWrap.appendChild(pageInfo);
+  gamesPaginationWrap.appendChild(totalInfo);
+
+  const select = document.createElement('select');
+  select.className = 'games-page-size-select';
+  select.setAttribute('aria-label', 'Rows per page');
+  for (const option of GAMES_ROWS_PER_PAGE_OPTIONS) {
+    const el = document.createElement('option');
+    el.value = String(option);
+    el.textContent = String(option);
+    if (option === pageSize) el.selected = true;
+    select.appendChild(el);
+  }
+  select.addEventListener('change', () => {
+    const next = normalizeGamesPageSize(select.value);
+    gamesTableState.pageSize = next;
+    gamesTableState.page = 1;
+    saveGamesRowsPerPagePreference(next);
+    syncGamesRowsPerPageInput();
+    renderGamesTable();
+  });
+
+  const label = document.createElement('label');
+  label.className = 'games-pagination-size';
+  label.append('Rows per page ', select);
+  gamesPaginationWrap.appendChild(label);
 }
 
 function reconcileSelectedIds() {
@@ -728,12 +831,30 @@ function renderGamesTable() {
   readGameFiltersFromInputs();
   reconcileSelectedIds();
   syncGameFilterOptions();
+  syncGamesRowsPerPageInput();
   readGameFiltersFromInputs();
-  updateFilterCount();
+
+  const rows = getFilteredDrafts();
+  const total = getVisibleNonDeletedCount();
+  const pageSize = normalizeGamesPageSize(gamesTableState.pageSize);
+  gamesTableState.pageSize = pageSize;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  gamesTableState.page = Math.min(Math.max(1, gamesTableState.page), totalPages);
+  const startIndex = rows.length > 0 ? (gamesTableState.page - 1) * pageSize : 0;
+  const pagedRows = rows.slice(startIndex, startIndex + pageSize);
+  const start = rows.length > 0 ? startIndex + 1 : 0;
+  const end = rows.length > 0 ? startIndex + pagedRows.length : 0;
+
+  updateFilterCount({ start, end, filteredTotal: rows.length, total });
+  renderGamesPagination({
+    page: gamesTableState.page,
+    pageSize,
+    totalRows: rows.length,
+    totalPages,
+  });
   updateSaveChangesUi();
   updateBulkToolbarUi();
 
-  const rows = getFilteredDrafts();
   if (rows.length === 0) {
     gamesWrap.innerHTML = '<p class="muted">No games match the current filters.</p>';
     return;
@@ -754,7 +875,7 @@ function renderGamesTable() {
         </tr>
       </thead>
       <tbody>
-        ${rows
+        ${pagedRows
           .map((draft) => {
             const id = Number(draft.id);
             const isDirty = dirtySet.has(id);
@@ -800,7 +921,7 @@ function renderGamesTable() {
     </table>
   `;
 
-  const visibleIds = rows.map((row) => Number(row.id));
+  const visibleIds = pagedRows.map((row) => Number(row.id));
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedGameIds.has(id));
   const selectAll = document.getElementById('selectAllVisibleGames');
   if (selectAll) {
@@ -1855,12 +1976,24 @@ function bindGameFilterEvents() {
   for (const [el, eventName] of bindings) {
     if (!el) continue;
     el.addEventListener(eventName, () => {
+      gamesTableState.page = 1;
+      renderGamesTable();
+    });
+  }
+  if (gamesRowsPerPageInput) {
+    gamesRowsPerPageInput.value = String(normalizeGamesPageSize(gamesTableState.pageSize));
+    gamesRowsPerPageInput.addEventListener('change', () => {
+      const next = normalizeGamesPageSize(gamesRowsPerPageInput.value);
+      gamesTableState.pageSize = next;
+      gamesTableState.page = 1;
+      saveGamesRowsPerPagePreference(next);
       renderGamesTable();
     });
   }
   if (clearGameFiltersBtn) {
     clearGameFiltersBtn.addEventListener('click', () => {
       clearGameFilters();
+      gamesTableState.page = 1;
       renderGamesTable();
     });
   }

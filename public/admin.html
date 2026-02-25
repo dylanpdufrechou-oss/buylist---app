@@ -129,21 +129,31 @@
               <select id="gamesFilterCondition">
                 <option value="all">All Conditions</option>
               </select>
-            <select id="gamesFilterActive">
-              <option value="all">All Statuses</option>
-              <option value="active">Active only</option>
-              <option value="inactive">Inactive only</option>
-            </select>
-            <select id="gamesFilterChange">
-              <option value="all">All Changes</option>
-              <option value="buffs">Buffs only</option>
-              <option value="nerfs">Nerfs only</option>
-              <option value="unchanged">Unchanged</option>
-              <option value="new">New</option>
-            </select>
-            <input id="gamesFilterPriceMin" type="number" min="0" step="0.01" placeholder="Min $" />
-            <input id="gamesFilterPriceMax" type="number" min="0" step="0.01" placeholder="Max $" />
-            <button id="clearGameFilters" type="button" class="secondary">Clear Filters</button>
+              <select id="gamesFilterActive">
+                <option value="all">All Statuses</option>
+                <option value="active">Active only</option>
+                <option value="inactive">Inactive only</option>
+              </select>
+              <select id="gamesFilterChange">
+                <option value="all">All Changes</option>
+                <option value="buffs">Buffs only</option>
+                <option value="nerfs">Nerfs only</option>
+                <option value="unchanged">Unchanged</option>
+                <option value="new">New</option>
+              </select>
+              <input id="gamesFilterPriceMin" type="number" min="0" step="0.01" placeholder="Min $" />
+              <input id="gamesFilterPriceMax" type="number" min="0" step="0.01" placeholder="Max $" />
+              <label for="gamesRowsPerPage" class="games-rows-control">
+                <span>Rows per page</span>
+                <select id="gamesRowsPerPage">
+                  <option value="10">10</option>
+                  <option value="20">20</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+              <button id="clearGameFilters" type="button" class="secondary">Clear Filters</button>
             </div>
             <div id="gamesFilterCount" class="games-filter-count muted">Showing 0 of 0</div>
           </div>
@@ -205,6 +215,7 @@
           </section>
 
           <div id="gamesWrap"></div>
+          <div id="gamesPagination" class="row-actions games-pagination"></div>
           <div id="saveChangesBar" class="save-changes-bar">
             <span id="unsavedChangesCount">Unsaved changes: 0</span>
             <button id="saveChangesBtn" type="button" disabled>Save Changes</button>
