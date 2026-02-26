@@ -61,6 +61,7 @@ const gamesFilterPlatformInput = document.getElementById('gamesFilterPlatform');
 const gamesFilterConditionInput = document.getElementById('gamesFilterCondition');
 const gamesFilterActiveInput = document.getElementById('gamesFilterActive');
 const gamesFilterChangeInput = document.getElementById('gamesFilterChange');
+const gamesSortPriceInput = document.getElementById('gamesSortPrice');
 const gamesFilterPriceMinInput = document.getElementById('gamesFilterPriceMin');
 const gamesFilterPriceMaxInput = document.getElementById('gamesFilterPriceMax');
 const gamesRowsPerPageInput = document.getElementById('gamesRowsPerPage');
@@ -169,6 +170,7 @@ const gameFilters = {
   condition: 'all',
   active: 'all',
   change: 'all',
+  sort: 'title-asc',
   minPrice: '',
   maxPrice: '',
 };
@@ -1057,6 +1059,7 @@ function readGameFiltersFromInputs() {
   gameFilters.condition = String(gamesFilterConditionInput?.value || 'all');
   gameFilters.active = String(gamesFilterActiveInput?.value || 'all');
   gameFilters.change = String(gamesFilterChangeInput?.value || 'all');
+  gameFilters.sort = String(gamesSortPriceInput?.value || 'title-asc');
   gameFilters.minPrice = String(gamesFilterPriceMinInput?.value || '').trim();
   gameFilters.maxPrice = String(gamesFilterPriceMaxInput?.value || '').trim();
 }
@@ -1067,6 +1070,7 @@ function clearGameFilters() {
   if (gamesFilterConditionInput) gamesFilterConditionInput.value = 'all';
   if (gamesFilterActiveInput) gamesFilterActiveInput.value = 'all';
   if (gamesFilterChangeInput) gamesFilterChangeInput.value = 'all';
+  if (gamesSortPriceInput) gamesSortPriceInput.value = 'title-asc';
   if (gamesFilterPriceMinInput) gamesFilterPriceMinInput.value = '';
   if (gamesFilterPriceMaxInput) gamesFilterPriceMaxInput.value = '';
   readGameFiltersFromInputs();
@@ -1096,7 +1100,21 @@ function draftMatchesFilters(draft) {
 
 function getFilteredDrafts() {
   const rows = Array.from(gameDrafts.values()).filter((draft) => draftMatchesFilters(draft));
-  rows.sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+  if (gameFilters.sort === 'price-desc') {
+    rows.sort((a, b) => {
+      const diff = Number(b.price || 0) - Number(a.price || 0);
+      if (Math.abs(diff) > 0.0001) return diff;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+  } else if (gameFilters.sort === 'price-asc') {
+    rows.sort((a, b) => {
+      const diff = Number(a.price || 0) - Number(b.price || 0);
+      if (Math.abs(diff) > 0.0001) return diff;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+  } else {
+    rows.sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+  }
   return rows;
 }
 
@@ -1726,6 +1744,13 @@ function submissionStatusClass(status) {
   return String(status || 'pending').toLowerCase().replaceAll(' ', '-');
 }
 
+async function deleteSubmissionById(id) {
+  const res = await adminFetch(`/api/admin/submissions/${id}`, { method: 'DELETE' });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || 'Could not delete submission.');
+  return body;
+}
+
 function submissionFiltersQueryString(includePage = true) {
   const params = new URLSearchParams();
   if (submissionsState.status && submissionsState.status !== 'All') params.set('status', submissionsState.status);
@@ -1777,6 +1802,7 @@ function renderSubmissionsTable(rows) {
             <td class="row-actions">
               <button class="secondary small" data-action="view-submission" data-id="${row.id}">View</button>
               <button class="secondary small" data-action="export-submission" data-id="${row.id}">Export CSV</button>
+              <button class="danger small" data-action="delete-submission" data-id="${row.id}">Delete</button>
             </td>
           </tr>
         `
@@ -1803,6 +1829,26 @@ function renderSubmissionsTable(rows) {
       try {
         await downloadAdminCsv(`/api/admin/submissions/${id}/export-csv`, `submission-${id}.csv`);
         showToast('Exported');
+      } catch (err) {
+        renderNotice(err.message, 'error');
+      }
+    });
+  });
+
+  submissionsTableWrap.querySelectorAll('button[data-action="delete-submission"]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.getAttribute('data-id'));
+      if (!Number.isInteger(id)) return;
+      const confirmed = confirm(
+        `Delete submission #${id}? This will remove the submission and all its line items.`
+      );
+      if (!confirmed) return;
+      try {
+        await deleteSubmissionById(id);
+        showToast('Submission deleted', 'warn');
+        await loadSubmissions(submissionsState.page);
+        await loadDashboardMetrics({ retries: 1 }).catch(() => {});
+        renderNotice(`Submission #${id} deleted.`, 'warn');
       } catch (err) {
         renderNotice(err.message, 'error');
       }
@@ -2140,6 +2186,7 @@ function gameFilterQueryString() {
   if (gameFilters.platform !== 'all') params.set('platform', gameFilters.platform);
   if (gameFilters.condition !== 'all') params.set('condition', gameFilters.condition);
   if (gameFilters.active !== 'all') params.set('active', gameFilters.active);
+  if (gameFilters.sort && gameFilters.sort !== 'title-asc') params.set('sort', gameFilters.sort);
   if (gameFilters.minPrice) params.set('minPrice', gameFilters.minPrice);
   if (gameFilters.maxPrice) params.set('maxPrice', gameFilters.maxPrice);
   return params.toString();
@@ -2583,6 +2630,7 @@ function bindGameFilterEvents() {
     [gamesFilterConditionInput, 'change'],
     [gamesFilterActiveInput, 'change'],
     [gamesFilterChangeInput, 'change'],
+    [gamesSortPriceInput, 'change'],
     [gamesFilterPriceMinInput, 'input'],
     [gamesFilterPriceMaxInput, 'input'],
   ];
