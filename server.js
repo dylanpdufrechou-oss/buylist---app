@@ -1175,6 +1175,27 @@ async function getAdminSubmissionsPayload(query = {}) {
   };
 }
 
+async function getAdminDashboardPayload() {
+  const [pendingRow, activeTitlesRow, settingsPayload] = await Promise.all([
+    db.get(`SELECT COUNT(*) AS c FROM submissions WHERE LOWER(COALESCE(status, '')) = 'pending'`),
+    db.get(`SELECT COUNT(*) AS c FROM games WHERE active = 1`),
+    getAdminSettingsPayload(),
+  ]);
+
+  const recentSubmissionsSql = usingPostgres
+    ? `SELECT COUNT(*) AS c FROM submissions WHERE created_at >= (NOW() - INTERVAL '7 day')`
+    : `SELECT COUNT(*) AS c FROM submissions WHERE created_at >= datetime('now', '-7 day')`;
+  const recentRow = await db.get(recentSubmissionsSql);
+
+  return {
+    pendingSubmissionsCount: Number(pendingRow?.c || 0),
+    submissionsLast7DaysCount: Number(recentRow?.c || 0),
+    activeTitlesCount: Number(activeTitlesRow?.c || 0),
+    lastPublishedAt: settingsPayload.last_published_at || null,
+    currentBuylistVersion: settingsPayload.current_buylist_version || normalizeBuylistVersion(currentMonthVersion()),
+  };
+}
+
 app.get(
   '/api/runtime',
   asyncHandler(async (req, res) => {
@@ -1228,6 +1249,19 @@ app.get(
         source: 'bootstrap',
       });
     }
+  })
+);
+
+app.get(
+  '/api/admin/dashboard',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
+    res.json(await getAdminDashboardPayload());
   })
 );
 

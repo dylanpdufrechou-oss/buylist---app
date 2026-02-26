@@ -284,6 +284,310 @@ h3 {
   font-size: 0.76rem;
 }
 
+.admin-shell .card {
+  margin-bottom: 0.75rem;
+}
+
+.admin-app {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-top-actions {
+  position: sticky;
+  top: 0.4rem;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: rgba(10, 18, 46, 0.96);
+  border-color: var(--line-strong);
+}
+
+.admin-top-actions-left,
+.admin-top-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.admin-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(19, 29, 68, 0.9);
+  color: #dce8ff;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.admin-pill.connected {
+  border-color: rgba(96, 255, 191, 0.6);
+  background: rgba(96, 255, 191, 0.16);
+  color: #d0ffe8;
+}
+
+.admin-pill.disconnected {
+  border-color: rgba(255, 123, 146, 0.65);
+  background: rgba(255, 123, 146, 0.16);
+  color: #ffd6de;
+}
+
+.admin-density-controls .density-btn {
+  min-height: 30px;
+}
+
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.4rem;
+  background: rgba(8, 15, 40, 0.76);
+}
+
+.admin-tab-btn {
+  min-height: 36px;
+  padding: 0.35rem 0.62rem;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: #141d44;
+  color: #d8e5ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.admin-tab-btn.is-active {
+  background: linear-gradient(120deg, #00d8ff, #8f6bff);
+  color: #081327;
+  border-color: transparent;
+}
+
+.admin-tab-panel {
+  display: none;
+}
+
+.admin-tab-panel.is-active {
+  display: block;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.dashboard-card h3 {
+  margin: 0;
+  font-size: 0.66rem;
+}
+
+.dashboard-value {
+  margin: 0.5rem 0 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #f3f8ff;
+}
+
+.dashboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0;
+}
+
+.admin-add-game-panel > summary {
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.admin-add-game-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-add-game-panel > summary::after {
+  content: 'Expand';
+  float: right;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+}
+
+.admin-add-game-panel[open] > summary::after {
+  content: 'Collapse';
+}
+
+.admin-add-game-form {
+  margin-top: 0.7rem;
+}
+
+.buylist-tools-card {
+  margin-bottom: 0;
+}
+
+.buylist-bulk-row {
+  margin-bottom: 0.7rem;
+}
+
+.admin-import-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.42rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.admin-games-filter-bar {
+  position: static;
+  margin-bottom: 0.7rem;
+  box-shadow: none;
+}
+
+.admin-games-filter-grid {
+  grid-template-columns: minmax(170px, 2fr) repeat(7, minmax(0, 1fr)) auto;
+}
+
+#gamesWrap {
+  max-height: min(68vh, 760px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+
+#gamesWrap table {
+  margin: 0;
+}
+
+.games-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #1d2a62;
+}
+
+.games-actions-col {
+  width: 130px;
+}
+
+.save-changes-bar {
+  position: sticky;
+  top: 0.2rem;
+  bottom: auto;
+  z-index: 3;
+  margin-top: 0;
+  margin-bottom: 0.65rem;
+}
+
+.admin-submissions-filters {
+  margin-bottom: 0.5rem;
+}
+
+.admin-submission-actions {
+  margin-bottom: 0.6rem;
+}
+
+.admin-settings-card {
+  width: min(720px, 100%);
+  margin-inline: auto;
+}
+
+.admin-advanced-settings {
+  width: min(720px, 100%);
+  margin-inline: auto;
+}
+
+button.small {
+  min-height: 30px;
+  padding: 0.25rem 0.48rem;
+  font-size: 0.74rem;
+}
+
+.admin-density-compact .admin-app h2,
+.admin-density-compact .admin-app h3 {
+  font-size: 0.78rem;
+}
+
+.admin-density-compact .admin-app input,
+.admin-density-compact .admin-app select,
+.admin-density-compact .admin-app textarea {
+  min-height: 34px;
+  padding: 0.4rem 0.54rem;
+  font-size: 0.84rem;
+}
+
+.admin-density-compact .admin-app textarea {
+  min-height: 84px;
+}
+
+.admin-density-compact .admin-app button {
+  min-height: 34px;
+  padding: 0.34rem 0.62rem;
+  font-size: 0.78rem;
+}
+
+.admin-density-compact .admin-app th,
+.admin-density-compact .admin-app td {
+  padding: 0.34rem 0.36rem;
+  font-size: 0.8rem;
+}
+
+.admin-density-compact .admin-app .muted {
+  font-size: 0.8rem;
+}
+
+.admin-density-comfortable .admin-app th,
+.admin-density-comfortable .admin-app td {
+  padding: 0.5rem 0.45rem;
+  font-size: 0.9rem;
+}
+
+.seller-controls {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.seller-controls-right {
+  display: inline-flex;
+  align-items: end;
+  gap: 0.45rem;
+}
+
+.seller-page-size-label {
+  display: grid;
+  gap: 0.16rem;
+  font-size: 0.78rem;
+  color: var(--ink-dim);
+}
+
+.seller-page-size-label select {
+  width: auto;
+  min-width: 76px;
+  min-height: 38px;
+}
+
+.seller-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.seller-pagination button {
+  min-height: 34px;
+  padding: 0.35rem 0.62rem;
+}
+
 .hero-panel {
   background: linear-gradient(125deg, rgba(20, 42, 98, 0.92), rgba(70, 36, 115, 0.85));
   border: 1px solid #6d7fd0;
@@ -1461,9 +1765,11 @@ input[type='checkbox'] {
 
 .save-changes-bar {
   position: sticky;
-  bottom: 0;
+  top: 0.2rem;
+  bottom: auto;
   z-index: 35;
-  margin-top: 0.75rem;
+  margin-top: 0;
+  margin-bottom: 0.7rem;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(10, 18, 46, 0.95);
@@ -1883,6 +2189,38 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .admin-top-actions {
+    top: 0.3rem;
+  }
+
+  .admin-top-actions-right,
+  .admin-top-actions-left {
+    width: 100%;
+  }
+
+  .admin-top-actions-right {
+    justify-content: flex-start;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-tabs {
+    position: sticky;
+    top: 4.8rem;
+    z-index: 70;
+  }
+
+  .seller-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .seller-controls-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .bulk-controls select,
   .bulk-controls input,
   .bulk-controls button {
@@ -1981,6 +2319,26 @@ a {
 
   .packing-slip-meta {
     grid-template-columns: 1fr;
+  }
+
+  .seller-page-size-label span {
+    font-size: 0.72rem;
+  }
+
+  .seller-page-size-label select {
+    min-height: 32px;
+    font-size: 0.76rem;
+  }
+
+  .seller-pagination {
+    margin-bottom: 0.35rem;
+    gap: 0.35rem;
+  }
+
+  .seller-pagination button {
+    min-height: 30px;
+    padding: 0.22rem 0.45rem;
+    font-size: 0.74rem;
   }
 
   .buylist-table-wrap {

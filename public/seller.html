@@ -59,11 +59,24 @@
             >CIB Only &ndash; 9/10 Condition Required</span
           >
         </div>
-        <div class="controls">
+        <div class="controls seller-controls">
           <input id="search" placeholder="Start typing your game title..." autocomplete="off" />
-          <button id="clearSearch" class="secondary">Clear</button>
+          <div class="seller-controls-right">
+            <label for="sellerRowsPerPage" class="seller-page-size-label">
+              <span>Rows per page</span>
+              <select id="sellerRowsPerPage">
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+            <button id="clearSearch" class="secondary" type="button">Clear</button>
+          </div>
         </div>
         <p id="tableMeta" class="muted"></p>
+        <div id="sellerPagination" class="seller-pagination"></div>
         <div id="buylistTableWrap" class="buylist-table-wrap"></div>
       </section>
 

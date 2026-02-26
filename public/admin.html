@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="container">
+    <main class="container admin-shell">
       <header>
         <div>
           <h1>Buylist Admin</h1>
@@ -24,16 +24,272 @@
         <div id="adminConnectNotice"></div>
       </section>
 
-      <div id="adminApp" style="display: none">
-        <section class="card">
-          <h2 style="margin-top: 0">Current Buylist Version</h2>
-          <div class="grid two">
+      <div id="adminApp" class="admin-app" style="display: none">
+        <section class="card admin-top-actions">
+          <div class="admin-top-actions-left">
+            <span id="adminConnectionBadge" class="admin-pill disconnected">Not Connected</span>
+            <span id="adminDbProviderBadge" class="admin-pill">DB: -</span>
+            <span id="adminVersionBadge" class="admin-pill">Version: -</span>
+          </div>
+          <div class="admin-top-actions-right">
+            <button id="topSaveChanges" type="button" class="secondary" disabled>Save Changes</button>
+            <button id="topPublishSnapshot" type="button" class="secondary">Publish Version Snapshot</button>
+            <button id="topImportCsv" type="button" class="secondary">Import CSV</button>
+            <button id="topExportCsv" type="button" class="secondary">Export All</button>
+            <button id="topExportFilteredCsv" type="button" class="secondary">Export Filtered</button>
+            <button id="topRefresh" type="button" class="secondary">Refresh</button>
+            <div class="density-controls admin-density-controls" role="group" aria-label="Density">
+              <span class="density-label">Density:</span>
+              <button id="densityCompactBtn" type="button" class="density-btn is-active">Compact</button>
+              <button id="densityComfortableBtn" type="button" class="density-btn">Comfortable</button>
+            </div>
+          </div>
+        </section>
+
+        <nav id="adminTabs" class="admin-tabs" aria-label="Admin sections">
+          <button type="button" data-admin-tab="dashboard" class="admin-tab-btn">Dashboard</button>
+          <button type="button" data-admin-tab="buylist" class="admin-tab-btn">Buylist (Games)</button>
+          <button type="button" data-admin-tab="submissions" class="admin-tab-btn">Submissions</button>
+          <button type="button" data-admin-tab="content" class="admin-tab-btn">Content</button>
+          <button type="button" data-admin-tab="settings" class="admin-tab-btn">Settings</button>
+        </nav>
+
+        <div id="adminMessage"></div>
+
+        <section id="adminTabDashboard" class="admin-tab-panel" data-admin-tab-panel="dashboard">
+          <div class="dashboard-grid">
+            <article class="card dashboard-card">
+              <h3>Pending Submissions</h3>
+              <p id="dashPendingCount" class="dashboard-value">-</p>
+            </article>
+            <article class="card dashboard-card">
+              <h3>Submissions (Last 7 Days)</h3>
+              <p id="dashSubmissions7d" class="dashboard-value">-</p>
+            </article>
+            <article class="card dashboard-card">
+              <h3>Active Titles</h3>
+              <p id="dashActiveTitles" class="dashboard-value">-</p>
+            </article>
+            <article class="card dashboard-card">
+              <h3>Last Publish</h3>
+              <p id="dashLastPublish" class="dashboard-value">-</p>
+            </article>
+            <article class="card dashboard-card">
+              <h3>Current Version</h3>
+              <p id="dashCurrentVersion" class="dashboard-value">-</p>
+            </article>
+          </div>
+          <div class="card dashboard-actions">
+            <button id="dashGoSubmissions" type="button" class="secondary">Go to Submissions</button>
+            <button id="dashGoBuylist" type="button" class="secondary">Go to Buylist</button>
+            <button id="dashGoContent" type="button" class="secondary">Go to Content</button>
+          </div>
+        </section>
+
+        <section id="adminTabBuylist" class="admin-tab-panel" data-admin-tab-panel="buylist">
+          <details id="addGamePanel" class="card admin-add-game-panel">
+            <summary>Add Game</summary>
+            <form id="addGameForm" class="grid two admin-add-game-form">
+              <input id="title" placeholder="Title" required />
+              <select id="platform" required>
+                <option value="">Select Platform</option>
+                <option value="Wii">Wii</option>
+                <option value="PS3">PS3</option>
+                <option value="PS2">PS2</option>
+                <option value="PS4">PS4</option>
+                <option value="OG Xbox">OG Xbox</option>
+                <option value="Xbox 360">Xbox 360</option>
+                <option value="Xbox One">Xbox One</option>
+                <option value="Wii U">Wii U</option>
+                <option value="Nintendo Switch">Nintendo Switch</option>
+                <option value="3DS">3DS</option>
+                <option value="DS">DS</option>
+              </select>
+              <select id="condition" required>
+                <option value="CIB">CIB</option>
+              </select>
+              <input id="price" placeholder="Price (e.g. 19.99)" type="number" min="0" step="0.01" required />
+              <select id="active">
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+              <button type="submit">Add</button>
+            </form>
+          </details>
+
+          <section class="card buylist-tools-card">
+            <div id="gamesFilterBar" class="games-filter-bar admin-games-filter-bar">
+              <div class="games-filter-grid admin-games-filter-grid">
+                <input id="gamesSearch" placeholder="Search title..." />
+                <select id="gamesFilterPlatform">
+                  <option value="all">All Platforms</option>
+                </select>
+                <select id="gamesFilterCondition">
+                  <option value="all">All Conditions</option>
+                </select>
+                <select id="gamesFilterActive">
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active only</option>
+                  <option value="inactive">Inactive only</option>
+                </select>
+                <select id="gamesFilterChange">
+                  <option value="all">All Changes</option>
+                  <option value="buffs">Buffs only</option>
+                  <option value="nerfs">Nerfs only</option>
+                  <option value="unchanged">Unchanged</option>
+                  <option value="new">New</option>
+                </select>
+                <input id="gamesFilterPriceMin" type="number" min="0" step="0.01" placeholder="Min $" />
+                <input id="gamesFilterPriceMax" type="number" min="0" step="0.01" placeholder="Max $" />
+                <label for="gamesRowsPerPage" class="games-rows-control">
+                  <span>Rows per page</span>
+                  <select id="gamesRowsPerPage">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </label>
+                <button id="clearGameFilters" type="button" class="secondary">Clear Filters</button>
+              </div>
+              <div id="gamesFilterCount" class="games-filter-count muted">Showing 0 of 0</div>
+            </div>
+
+            <div class="row-actions buylist-bulk-row">
+              <button id="refreshGames" class="secondary" type="button">Refresh</button>
+              <button id="saveAllGames" class="secondary" type="button">Save All</button>
+              <button id="exportCsv" class="secondary" type="button">Export All</button>
+              <button id="exportFilteredCsv" class="secondary" type="button">Export Filtered</button>
+              <label class="secondary admin-import-label">
+                Import CSV
+                <input id="importCsv" type="file" accept=".csv" style="display: none" />
+              </label>
+              <span class="muted">CSV header: title,platform,condition,price,active</span>
+            </div>
+
+            <div id="bulkToolbar" class="bulk-toolbar is-hidden">
+              <strong id="bulkSelectedCount">0 selected</strong>
+              <div class="bulk-controls">
+                <select id="bulkSetActive">
+                  <option value="">Set Active...</option>
+                  <option value="1">Active</option>
+                  <option value="0">Inactive</option>
+                </select>
+                <button id="applyBulkActive" type="button" class="secondary">Apply</button>
+
+                <select id="bulkSetCondition">
+                  <option value="">Set Condition...</option>
+                </select>
+                <button id="applyBulkCondition" type="button" class="secondary">Apply</button>
+
+                <select id="bulkPriceDirection">
+                  <option value="increase">Increase</option>
+                  <option value="decrease">Decrease</option>
+                </select>
+                <select id="bulkPriceMode">
+                  <option value="amount">$ Amount</option>
+                  <option value="percent">% Percent</option>
+                </select>
+                <input id="bulkPriceValue" type="number" min="0" step="0.01" placeholder="Value" />
+                <button id="applyBulkPriceAdjust" type="button" class="secondary">Apply</button>
+
+                <button id="bulkRound99" type="button" class="secondary">Round .99</button>
+                <button id="bulkRoundDollar" type="button" class="secondary">Round Dollar</button>
+                <button id="bulkDeleteSelected" type="button" class="danger">Delete Selected</button>
+              </div>
+            </div>
+
+            <section id="importPreviewPanel" class="import-preview is-hidden">
+              <h3 style="margin-top: 0">Import Preview</h3>
+              <div id="importPreviewSummary" class="muted"></div>
+              <div id="importPreviewErrors" class="muted"></div>
+              <div id="importPreviewRows" style="margin-top: 0.6rem"></div>
+              <div class="grid two" style="margin-top: 0.8rem">
+                <div class="grid">
+                  <label for="importMode">Import behavior</label>
+                  <select id="importMode">
+                    <option value="upsert">Update existing + add new</option>
+                    <option value="add">Add new only</option>
+                    <option value="replace">Replace all (danger)</option>
+                  </select>
+                  <label><input id="importSkipDuplicates" type="checkbox" /> Skip duplicates</label>
+                  <label><input id="importStopOnError" type="checkbox" /> Stop on error</label>
+                  <input id="importReplaceConfirm" class="is-hidden" placeholder="Type REPLACE to confirm" />
+                </div>
+                <div class="row-actions" style="align-items: end">
+                  <button id="commitImport" type="button">Commit Import</button>
+                  <button id="cancelImport" type="button" class="secondary">Cancel</button>
+                </div>
+              </div>
+            </section>
+
+            <div id="saveChangesBar" class="save-changes-bar">
+              <span id="unsavedChangesCount">Unsaved changes: 0</span>
+              <button id="saveChangesBtn" type="button" disabled>Save Changes</button>
+            </div>
+
+            <div id="gamesWrap"></div>
+            <div id="gamesPagination" class="row-actions games-pagination"></div>
+          </section>
+        </section>
+
+        <section id="adminTabSubmissions" class="admin-tab-panel" data-admin-tab-panel="submissions">
+          <section class="card">
+            <h2 style="margin-top: 0">Submissions</h2>
+            <div class="grid submissions-filters admin-submissions-filters">
+              <select id="submissionsStatusFilter">
+                <option value="All">All statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Received">Received</option>
+                <option value="Paid">Paid</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+              <input id="submissionsSearch" placeholder="Search by submission ID, name, or email" />
+              <select id="submissionsSort">
+                <option value="newest">Sort: Newest first</option>
+                <option value="oldest">Sort: Oldest first</option>
+              </select>
+            </div>
+            <div class="row-actions admin-submission-actions">
+              <button id="applySubmissionFilters" class="secondary" type="button">Apply Filters</button>
+              <button id="clearSubmissionFilters" class="secondary" type="button">Clear</button>
+              <button id="exportFilteredSubmissionsCsv" class="secondary" type="button">Export Filtered CSV</button>
+            </div>
+            <div id="submissionsTableWrap"></div>
+            <div id="submissionsPagination" class="row-actions" style="margin-top: 0.7rem"></div>
+          </section>
+        </section>
+
+        <section id="adminTabContent" class="admin-tab-panel" data-admin-tab-panel="content">
+          <section class="card">
+            <h2 style="margin-top: 0">Homepage FAQ Manager</h2>
+            <form id="addFaqForm" class="grid admin-faq-add-form">
+              <input id="faqQuestion" placeholder="Question" required />
+              <textarea id="faqAnswer" rows="3" placeholder="Answer" required></textarea>
+              <div class="grid two">
+                <input id="faqSortOrder" type="number" value="0" />
+                <select id="faqActive">
+                  <option value="1">Active</option>
+                  <option value="0">Inactive</option>
+                </select>
+              </div>
+              <button type="submit">Add FAQ</button>
+            </form>
+            <div id="faqWrap" style="margin-top: 0.75rem"></div>
+          </section>
+        </section>
+
+        <section id="adminTabSettings" class="admin-tab-panel" data-admin-tab-panel="settings">
+          <section class="card admin-settings-card">
+            <h2 style="margin-top: 0">Buylist Settings</h2>
             <div class="grid">
               <label for="currentBuylistVersion" class="muted">Current Buylist Version</label>
               <input id="currentBuylistVersion" placeholder="YYYY-MM (example: 2026-02)" />
               <p class="muted" style="margin: 0">
                 Used to lock pricing for new submissions (example: 2026-02)
               </p>
+
               <label for="showPriceChangeHighlights" class="muted" style="margin-top: 0.5rem"
                 >Seller Price Change Highlights</label
               >
@@ -42,7 +298,28 @@
                 <option value="0">Off (Show normal pricing only)</option>
               </select>
               <p class="muted" style="margin: 0">Controls whether buff/nerf highlights appear on public seller pages.</p>
-              <h3 style="margin: 0.9rem 0 0.25rem">Ship To Details</h3>
+
+              <div id="buylistPublishMeta" class="buylist-publish-meta">
+                <p class="muted" style="margin: 0">
+                  Last published: <strong id="lastPublishedVersion">-</strong>
+                  <span id="lastPublishedAtWrap" style="display: inline">(<span id="lastPublishedAt">-</span>)</span>
+                </p>
+                <p class="muted" style="margin: 0">
+                  Comparison baseline: <strong id="comparisonBaselineVersion">None</strong>
+                </p>
+              </div>
+
+              <div class="row-actions buylist-publish-actions">
+                <button id="saveBuylistVersion" type="button">Save Settings</button>
+                <button id="publishBuylistSnapshot" type="button" class="secondary">Publish Version Snapshot</button>
+              </div>
+            </div>
+          </section>
+
+          <details class="card admin-advanced-settings">
+            <summary>Packing Slip Settings</summary>
+            <div class="grid" style="margin-top: 0.65rem">
+              <h3 style="margin: 0.2rem 0 0.1rem">Ship To Details</h3>
               <p class="muted" style="margin: 0 0 0.3rem">Shown on seller packing slips.</p>
               <input id="shipToBusinessName" placeholder="Business Name" />
               <input id="shipToContactName" placeholder="Contact Name (optional)" />
@@ -62,213 +339,19 @@
                 rows="5"
                 placeholder="One instruction per line for sellers after printing."
               ></textarea>
-              <div id="buylistPublishMeta" class="buylist-publish-meta">
-                <p class="muted" style="margin: 0">
-                  Last published: <strong id="lastPublishedVersion">-</strong>
-                  <span id="lastPublishedAtWrap" style="display: inline">(<span id="lastPublishedAt">-</span>)</span>
-                </p>
-                <p class="muted" style="margin: 0">
-                  Comparison baseline: <strong id="comparisonBaselineVersion">None</strong>
-                </p>
-              </div>
             </div>
-            <div class="row-actions buylist-publish-actions" style="align-items: end">
-              <button id="saveBuylistVersion" type="button">Save Settings</button>
-              <button id="publishBuylistSnapshot" type="button" class="secondary">Publish Version Snapshot</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="card">
-          <h2 style="margin-top: 0">Add Game</h2>
-          <div id="adminMessage"></div>
-          <form id="addGameForm" class="grid two">
-            <input id="title" placeholder="Title" required />
-            <select id="platform" required>
-              <option value="">Select Platform</option>
-              <option value="Wii">Wii</option>
-              <option value="PS3">PS3</option>
-              <option value="PS2">PS2</option>
-              <option value="PS4">PS4</option>
-              <option value="OG Xbox">OG Xbox</option>
-              <option value="Xbox 360">Xbox 360</option>
-              <option value="Xbox One">Xbox One</option>
-              <option value="Wii U">Wii U</option>
-              <option value="Nintendo Switch">Nintendo Switch</option>
-              <option value="3DS">3DS</option>
-              <option value="DS">DS</option>
-            </select>
-            <select id="condition" required>
-              <option value="CIB">CIB</option>
-            </select>
-            <input id="price" placeholder="Price (e.g. 19.99)" type="number" min="0" step="0.01" required />
-            <select id="active">
-              <option value="1">Active</option>
-              <option value="0">Inactive</option>
-            </select>
-            <button type="submit">Add</button>
-          </form>
-        </section>
-
-        <section class="card">
-          <div class="row-actions" style="margin-bottom: 0.75rem">
-            <button id="refreshGames" class="secondary">Refresh Games</button>
-            <button id="saveAllGames" class="secondary">Save All</button>
-            <button id="exportCsv" class="secondary">Export All</button>
-            <button id="exportFilteredCsv" class="secondary">Export Filtered</button>
-            <label class="secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.8rem; border: 1px solid var(--line); border-radius: 10px; cursor: pointer;">
-              Import CSV
-              <input id="importCsv" type="file" accept=".csv" style="display: none" />
-            </label>
-            <span class="muted">CSV header: title,platform,condition,price,active</span>
-          </div>
-
-          <div id="gamesFilterBar" class="games-filter-bar">
-            <div class="games-filter-grid">
-              <input id="gamesSearch" placeholder="Search title..." />
-              <select id="gamesFilterPlatform">
-                <option value="all">All Platforms</option>
-              </select>
-              <select id="gamesFilterCondition">
-                <option value="all">All Conditions</option>
-              </select>
-              <select id="gamesFilterActive">
-                <option value="all">All Statuses</option>
-                <option value="active">Active only</option>
-                <option value="inactive">Inactive only</option>
-              </select>
-              <select id="gamesFilterChange">
-                <option value="all">All Changes</option>
-                <option value="buffs">Buffs only</option>
-                <option value="nerfs">Nerfs only</option>
-                <option value="unchanged">Unchanged</option>
-                <option value="new">New</option>
-              </select>
-              <input id="gamesFilterPriceMin" type="number" min="0" step="0.01" placeholder="Min $" />
-              <input id="gamesFilterPriceMax" type="number" min="0" step="0.01" placeholder="Max $" />
-              <label for="gamesRowsPerPage" class="games-rows-control">
-                <span>Rows per page</span>
-                <select id="gamesRowsPerPage">
-                  <option value="10">10</option>
-                  <option value="20">20</option>
-                  <option value="25" selected>25</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                </select>
-              </label>
-              <button id="clearGameFilters" type="button" class="secondary">Clear Filters</button>
-            </div>
-            <div id="gamesFilterCount" class="games-filter-count muted">Showing 0 of 0</div>
-          </div>
-
-          <div id="bulkToolbar" class="bulk-toolbar is-hidden">
-            <strong id="bulkSelectedCount">0 selected</strong>
-            <div class="bulk-controls">
-              <select id="bulkSetActive">
-                <option value="">Set Active...</option>
-                <option value="1">Active</option>
-                <option value="0">Inactive</option>
-              </select>
-              <button id="applyBulkActive" type="button" class="secondary">Apply</button>
-
-              <select id="bulkSetCondition">
-                <option value="">Set Condition...</option>
-              </select>
-              <button id="applyBulkCondition" type="button" class="secondary">Apply</button>
-
-              <select id="bulkPriceDirection">
-                <option value="increase">Increase</option>
-                <option value="decrease">Decrease</option>
-              </select>
-              <select id="bulkPriceMode">
-                <option value="amount">$ Amount</option>
-                <option value="percent">% Percent</option>
-              </select>
-              <input id="bulkPriceValue" type="number" min="0" step="0.01" placeholder="Value" />
-              <button id="applyBulkPriceAdjust" type="button" class="secondary">Apply</button>
-
-              <button id="bulkRound99" type="button" class="secondary">Round .99</button>
-              <button id="bulkRoundDollar" type="button" class="secondary">Round Dollar</button>
-              <button id="bulkDeleteSelected" type="button" class="danger">Delete Selected</button>
-            </div>
-          </div>
-
-          <section id="importPreviewPanel" class="import-preview is-hidden">
-            <h3 style="margin-top: 0">Import Preview</h3>
-            <div id="importPreviewSummary" class="muted"></div>
-            <div id="importPreviewErrors" class="muted"></div>
-            <div id="importPreviewRows" style="margin-top: 0.6rem"></div>
-            <div class="grid two" style="margin-top: 0.8rem">
-              <div class="grid">
-                <label for="importMode">Import behavior</label>
-                <select id="importMode">
-                  <option value="upsert">Update existing + add new</option>
-                  <option value="add">Add new only</option>
-                  <option value="replace">Replace all (danger)</option>
-                </select>
-                <label><input id="importSkipDuplicates" type="checkbox" /> Skip duplicates</label>
-                <label><input id="importStopOnError" type="checkbox" /> Stop on error</label>
-                <input id="importReplaceConfirm" class="is-hidden" placeholder="Type REPLACE to confirm" />
-              </div>
-              <div class="row-actions" style="align-items: end">
-                <button id="commitImport" type="button">Commit Import</button>
-                <button id="cancelImport" type="button" class="secondary">Cancel</button>
-              </div>
-            </div>
-          </section>
-
-          <div id="gamesWrap"></div>
-          <div id="gamesPagination" class="row-actions games-pagination"></div>
-          <div id="saveChangesBar" class="save-changes-bar">
-            <span id="unsavedChangesCount">Unsaved changes: 0</span>
-            <button id="saveChangesBtn" type="button" disabled>Save Changes</button>
-          </div>
-        </section>
-
-        <section class="card">
-          <h2 style="margin-top: 0">Submissions</h2>
-          <div class="grid submissions-filters" style="margin-bottom: 0.7rem">
-            <select id="submissionsStatusFilter">
-              <option value="All">All statuses</option>
-              <option value="Pending">Pending</option>
-              <option value="Received">Received</option>
-              <option value="Paid">Paid</option>
-              <option value="Rejected">Rejected</option>
-            </select>
-            <input id="submissionsSearch" placeholder="Search by submission ID, name, or email" />
-            <select id="submissionsSort">
-              <option value="newest">Sort: Newest first</option>
-              <option value="oldest">Sort: Oldest first</option>
-            </select>
-          </div>
-          <div class="row-actions" style="margin-bottom: 0.7rem">
-            <button id="applySubmissionFilters" class="secondary">Apply Filters</button>
-            <button id="clearSubmissionFilters" class="secondary">Clear</button>
-            <button id="exportFilteredSubmissionsCsv" class="secondary">Export Filtered CSV</button>
-          </div>
-          <div id="submissionsTableWrap"></div>
-          <div id="submissionsPagination" class="row-actions" style="margin-top: 0.7rem"></div>
-        </section>
-
-        <section class="card">
-          <h2 style="margin-top: 0">Homepage FAQ Manager</h2>
-          <form id="addFaqForm" class="grid">
-            <input id="faqQuestion" placeholder="Question" required />
-            <textarea id="faqAnswer" rows="3" placeholder="Answer" required></textarea>
-            <div class="grid two">
-              <input id="faqSortOrder" type="number" value="0" />
-              <select id="faqActive">
-                <option value="1">Active</option>
-                <option value="0">Inactive</option>
-              </select>
-            </div>
-            <button type="submit">Add FAQ</button>
-          </form>
-          <div id="faqWrap" style="margin-top: 0.75rem"></div>
+          </details>
         </section>
       </div>
     </main>
-    <div id="submissionDetailModal" class="admin-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="submissionDetailTitle">
+
+    <div
+      id="submissionDetailModal"
+      class="admin-modal is-hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="submissionDetailTitle"
+    >
       <div class="admin-modal-card">
         <div class="admin-modal-head">
           <h2 id="submissionDetailTitle" style="margin: 0">Submission Detail</h2>
@@ -277,6 +360,7 @@
         <div id="submissionDetailBody"></div>
       </div>
     </div>
+
     <div id="toastContainer" class="toast-container"></div>
     <script src="/table-align.js"></script>
     <script src="/admin.js"></script>

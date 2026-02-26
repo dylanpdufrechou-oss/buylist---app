@@ -2,6 +2,8 @@ const buylistWrap = document.getElementById('buylistTableWrap');
 const platformTabsWrap = document.getElementById('platformTabs');
 const searchInput = document.getElementById('search');
 const clearSearchBtn = document.getElementById('clearSearch');
+const sellerRowsPerPageInput = document.getElementById('sellerRowsPerPage');
+const sellerPaginationWrap = document.getElementById('sellerPagination');
 const stickyPayout = document.getElementById('stickyPayout');
 const mobileSubmitAmount = document.getElementById('mobileSubmitAmount');
 const mobileSubmitCount = document.getElementById('mobileSubmitCount');
@@ -33,6 +35,10 @@ const TITLE_PREVIEW_HOLD_MS = 220;
 const PACKING_SLIP_SESSION_KEY = 'ibgPackingSlipPayload';
 const PACKING_SLIP_LOCAL_KEY = 'ibgPackingSlipPayloadBackup';
 const PACKING_SLIP_PATH = '/packing-slip.html';
+const SELLER_ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
+const SELLER_ROWS_PER_PAGE_DEFAULT = 25;
+const SELLER_ROWS_PER_PAGE_STORAGE_KEY = 'sellerRowsPerPage';
+const isSellerPageView = /\/seller(\.html)?$/i.test(window.location.pathname || '');
 
 let games = [];
 const qtyMap = new Map();
@@ -60,6 +66,10 @@ let titlePreviewBubble = null;
 let titlePreviewHoldTimer = 0;
 let titlePreviewTrigger = null;
 let titlePreviewHoldTriggered = false;
+let sellerTableState = {
+  page: 1,
+  pageSize: loadSellerRowsPerPagePreference(),
+};
 
 function escapeHtml(str) {
   return String(str || '')
@@ -72,6 +82,33 @@ function escapeHtml(str) {
 
 function asMoney(price) {
   return `$${Number(price).toFixed(2)}`;
+}
+
+function normalizeSellerRowsPerPage(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return SELLER_ROWS_PER_PAGE_DEFAULT;
+  return SELLER_ROWS_PER_PAGE_OPTIONS.includes(parsed) ? parsed : SELLER_ROWS_PER_PAGE_DEFAULT;
+}
+
+function loadSellerRowsPerPagePreference() {
+  try {
+    return normalizeSellerRowsPerPage(localStorage.getItem(SELLER_ROWS_PER_PAGE_STORAGE_KEY));
+  } catch {
+    return SELLER_ROWS_PER_PAGE_DEFAULT;
+  }
+}
+
+function saveSellerRowsPerPagePreference(pageSize) {
+  try {
+    localStorage.setItem(SELLER_ROWS_PER_PAGE_STORAGE_KEY, String(normalizeSellerRowsPerPage(pageSize)));
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
+function syncSellerRowsPerPageControl() {
+  if (!sellerRowsPerPageInput) return;
+  sellerRowsPerPageInput.value = String(normalizeSellerRowsPerPage(sellerTableState.pageSize));
 }
 
 function formatSignedMoneyFromCents(cents) {
@@ -578,6 +615,7 @@ function renderTabs() {
     if (select) {
       select.addEventListener('change', () => {
         activePlatformTab = select.value || ALL_PLATFORMS_VALUE;
+        sellerTableState.page = 1;
         renderTabs();
         renderTable();
         if (searchInput) searchInput.focus();
@@ -604,6 +642,7 @@ function renderTabs() {
   platformTabsWrap.querySelectorAll('button[data-platform-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       activePlatformTab = btn.getAttribute('data-platform-tab');
+      sellerTableState.page = 1;
       renderTabs();
       renderTable();
       if (searchInput) searchInput.focus();
@@ -723,6 +762,47 @@ function getFilteredGames() {
   return platformRows.filter((g) => String(g.title || '').toLowerCase().includes(q));
 }
 
+function renderSellerPagination(totalRows, pageRows, startIndex, totalPages) {
+  if (!sellerPaginationWrap || !isSellerPageView) return;
+  sellerPaginationWrap.innerHTML = '';
+  if (totalRows <= 0) {
+    return;
+  }
+
+  const prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
+  prevBtn.className = 'secondary';
+  prevBtn.textContent = 'Prev';
+  prevBtn.disabled = sellerTableState.page <= 1;
+
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.className = 'secondary';
+  nextBtn.textContent = 'Next';
+  nextBtn.disabled = sellerTableState.page >= totalPages;
+
+  const start = startIndex + 1;
+  const end = startIndex + pageRows.length;
+  const count = document.createElement('span');
+  count.className = 'muted';
+  count.textContent = `Showing ${start}\u2013${end} of ${totalRows}`;
+
+  const page = document.createElement('span');
+  page.className = 'muted';
+  page.textContent = `Page ${sellerTableState.page} of ${totalPages}`;
+
+  prevBtn.addEventListener('click', () => {
+    sellerTableState.page = Math.max(1, sellerTableState.page - 1);
+    renderTable();
+  });
+  nextBtn.addEventListener('click', () => {
+    sellerTableState.page = Math.min(totalPages, sellerTableState.page + 1);
+    renderTable();
+  });
+
+  sellerPaginationWrap.append(prevBtn, nextBtn, page, count);
+}
+
 function getSelectionSummary() {
   const rows = selectedItems();
   const total = rows.reduce((sum, item) => sum + item.quantity * item.price, 0);
@@ -798,13 +878,35 @@ function renderTable() {
   if (!activePlatformTab) {
     tableMeta.textContent = 'Buylist';
     buylistWrap.innerHTML = '<p class="muted">No console tabs are configured.</p>';
+    if (sellerPaginationWrap) sellerPaginationWrap.innerHTML = '';
     return;
   }
 
   const selectedPlatformLabel = activePlatformTab === ALL_PLATFORMS_VALUE ? 'All Platforms' : activePlatformTab;
   const platformRows = getGamesForPlatform(activePlatformTab);
   const filtered = getFilteredGames();
-  tableMeta.textContent = `Showing ${filtered.length} of ${platformRows.length} in ${selectedPlatformLabel}`;
+  let pagedRows = filtered;
+  let startIndex = 0;
+  let totalPages = 1;
+
+  if (isSellerPageView) {
+    const pageSize = normalizeSellerRowsPerPage(sellerTableState.pageSize);
+    sellerTableState.pageSize = pageSize;
+    totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    sellerTableState.page = Math.min(Math.max(1, sellerTableState.page), totalPages);
+    startIndex = filtered.length > 0 ? (sellerTableState.page - 1) * pageSize : 0;
+    pagedRows = filtered.slice(startIndex, startIndex + pageSize);
+    syncSellerRowsPerPageControl();
+    if (filtered.length > 0) {
+      tableMeta.textContent = `Showing ${startIndex + 1}\u2013${startIndex + pagedRows.length} of ${filtered.length} in ${selectedPlatformLabel}`;
+    } else {
+      tableMeta.textContent = `Showing 0 of 0 in ${selectedPlatformLabel}`;
+    }
+    renderSellerPagination(filtered.length, pagedRows, startIndex, totalPages);
+  } else {
+    tableMeta.textContent = `Showing ${filtered.length} of ${platformRows.length} in ${selectedPlatformLabel}`;
+    if (sellerPaginationWrap) sellerPaginationWrap.innerHTML = '';
+  }
 
   if (filtered.length === 0) {
     buylistWrap.innerHTML = `<p class="muted">No matching games found for ${escapeHtml(selectedPlatformLabel)}.</p>`;
@@ -813,6 +915,8 @@ function renderTable() {
     renderSelectedItems();
     return;
   }
+
+  const rowsToRender = isSellerPageView ? pagedRows : filtered;
 
   buylistWrap.innerHTML = `
     <table class="sheet-table">
@@ -826,7 +930,7 @@ function renderTable() {
         </tr>
       </thead>
       <tbody>
-        ${filtered
+        ${rowsToRender
           .map((g) => {
             const deltaMeta = priceDeltaMeta(g);
             const rowClass = deltaMeta.className ? `delta-${deltaMeta.className}` : '';
@@ -904,6 +1008,7 @@ async function loadFaqs() {
 
 if (searchInput) {
   searchInput.addEventListener('input', () => {
+    if (isSellerPageView) sellerTableState.page = 1;
     renderTable();
   });
 
@@ -922,6 +1027,18 @@ if (clearSearchBtn) {
       searchInput.value = '';
       searchInput.focus();
     }
+    if (isSellerPageView) sellerTableState.page = 1;
+    renderTable();
+  });
+}
+
+if (sellerRowsPerPageInput) {
+  syncSellerRowsPerPageControl();
+  sellerRowsPerPageInput.addEventListener('change', () => {
+    const next = normalizeSellerRowsPerPage(sellerRowsPerPageInput.value);
+    sellerTableState.pageSize = next;
+    sellerTableState.page = 1;
+    saveSellerRowsPerPagePreference(next);
     renderTable();
   });
 }
@@ -1069,6 +1186,7 @@ function handleMobilePlatformModeChange() {
   const nextMode = mobilePlatformMedia.matches;
   if (nextMode === isMobilePlatformUi) return;
   isMobilePlatformUi = nextMode;
+  if (isSellerPageView) sellerTableState.page = 1;
   if (!isMobilePlatformUi && activePlatformTab === ALL_PLATFORMS_VALUE) {
     activePlatformTab = platformTabs[0] || '';
   }

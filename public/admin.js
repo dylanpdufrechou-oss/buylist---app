@@ -3,6 +3,27 @@ const connectBtn = document.getElementById('connect');
 const adminConnectNotice = document.getElementById('adminConnectNotice');
 const adminApp = document.getElementById('adminApp');
 const adminMessage = document.getElementById('adminMessage');
+const adminConnectionBadge = document.getElementById('adminConnectionBadge');
+const adminDbProviderBadge = document.getElementById('adminDbProviderBadge');
+const adminVersionBadge = document.getElementById('adminVersionBadge');
+const topSaveChangesBtn = document.getElementById('topSaveChanges');
+const topPublishSnapshotBtn = document.getElementById('topPublishSnapshot');
+const topImportCsvBtn = document.getElementById('topImportCsv');
+const topExportCsvBtn = document.getElementById('topExportCsv');
+const topExportFilteredCsvBtn = document.getElementById('topExportFilteredCsv');
+const topRefreshBtn = document.getElementById('topRefresh');
+const densityCompactBtn = document.getElementById('densityCompactBtn');
+const densityComfortableBtn = document.getElementById('densityComfortableBtn');
+const adminTabButtons = Array.from(document.querySelectorAll('#adminTabs [data-admin-tab]'));
+const adminTabPanels = Array.from(document.querySelectorAll('[data-admin-tab-panel]'));
+const dashPendingCount = document.getElementById('dashPendingCount');
+const dashSubmissions7d = document.getElementById('dashSubmissions7d');
+const dashActiveTitles = document.getElementById('dashActiveTitles');
+const dashLastPublish = document.getElementById('dashLastPublish');
+const dashCurrentVersion = document.getElementById('dashCurrentVersion');
+const dashGoSubmissionsBtn = document.getElementById('dashGoSubmissions');
+const dashGoBuylistBtn = document.getElementById('dashGoBuylist');
+const dashGoContentBtn = document.getElementById('dashGoContent');
 
 const currentBuylistVersionInput = document.getElementById('currentBuylistVersion');
 const showPriceChangeHighlightsInput = document.getElementById('showPriceChangeHighlights');
@@ -118,6 +139,10 @@ const platformOptions = [
 ];
 const BUYLIST_UPDATED_EVENT = 'buylistUpdatedAt';
 const BUYLIST_SNAPSHOT_EVENT = 'buylistSnapshot';
+const ADMIN_ACTIVE_TAB_KEY = 'adminActiveTab';
+const ADMIN_DENSITY_MODE_KEY = 'adminDensityMode';
+const ADMIN_DENSITY_MODES = ['compact', 'comfortable'];
+const ADMIN_TABS = ['dashboard', 'buylist', 'submissions', 'content', 'settings'];
 const LAST_PLATFORM_KEY = 'adminLastPlatform';
 const LAST_CONDITION_KEY = 'adminLastCondition';
 const EPHEMERAL_SNAPSHOT_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
@@ -163,6 +188,15 @@ let submissionsState = {
 };
 let runtimeInfo = { isVercel: false, ephemeralStorage: false, persistentStorage: true, dbProvider: 'sqlite' };
 let hasAttemptedEphemeralRestore = false;
+let activeAdminTab = loadAdminTabPreference();
+let adminDensityMode = loadAdminDensityPreference();
+let dashboardState = {
+  pendingSubmissionsCount: 0,
+  submissionsLast7DaysCount: 0,
+  activeTitlesCount: 0,
+  lastPublishedAt: null,
+  currentBuylistVersion: '',
+};
 let adminSettings = {
   current_buylist_version: '',
   show_price_change_highlights_public: true,
@@ -259,6 +293,244 @@ function formatSignedMoneyFromCents(cents) {
   return `${amount >= 0 ? '+' : '-'}$${abs}`;
 }
 
+function safeAdminTab(tab) {
+  const normalized = String(tab || '').trim().toLowerCase();
+  return ADMIN_TABS.includes(normalized) ? normalized : 'dashboard';
+}
+
+function loadAdminTabPreference() {
+  try {
+    return safeAdminTab(localStorage.getItem(ADMIN_ACTIVE_TAB_KEY));
+  } catch {
+    return 'dashboard';
+  }
+}
+
+function saveAdminTabPreference(tab) {
+  try {
+    localStorage.setItem(ADMIN_ACTIVE_TAB_KEY, safeAdminTab(tab));
+  } catch {
+    // Ignore local storage failures.
+  }
+}
+
+function loadAdminDensityPreference() {
+  try {
+    const mode = String(localStorage.getItem(ADMIN_DENSITY_MODE_KEY) || '').trim().toLowerCase();
+    return ADMIN_DENSITY_MODES.includes(mode) ? mode : 'compact';
+  } catch {
+    return 'compact';
+  }
+}
+
+function saveAdminDensityPreference(mode) {
+  try {
+    localStorage.setItem(ADMIN_DENSITY_MODE_KEY, ADMIN_DENSITY_MODES.includes(mode) ? mode : 'compact');
+  } catch {
+    // Ignore local storage failures.
+  }
+}
+
+function setElementVisibility(el, isVisible) {
+  if (!el) return;
+  el.classList.toggle('is-hidden', !isVisible);
+}
+
+function updateAdminStatusIndicators(connected) {
+  if (adminConnectionBadge) {
+    adminConnectionBadge.textContent = connected ? 'Connected' : 'Not Connected';
+    adminConnectionBadge.classList.toggle('connected', connected);
+    adminConnectionBadge.classList.toggle('disconnected', !connected);
+  }
+  if (adminDbProviderBadge) {
+    adminDbProviderBadge.textContent = `DB: ${runtimeInfo.dbProvider || 'unknown'}`;
+  }
+  if (adminVersionBadge) {
+    const version = String(adminSettings.current_buylist_version || currentBuylistVersionInput?.value || '').trim();
+    adminVersionBadge.textContent = `Version: ${version || '-'}`;
+  }
+}
+
+function setAdminDensityMode(mode, { persist = true } = {}) {
+  const normalized = ADMIN_DENSITY_MODES.includes(mode) ? mode : 'compact';
+  adminDensityMode = normalized;
+  document.body.classList.remove('admin-density-compact', 'admin-density-comfortable');
+  document.body.classList.add(`admin-density-${normalized}`);
+  if (densityCompactBtn) densityCompactBtn.classList.toggle('is-active', normalized === 'compact');
+  if (densityComfortableBtn) densityComfortableBtn.classList.toggle('is-active', normalized === 'comfortable');
+  if (persist) saveAdminDensityPreference(normalized);
+}
+
+function getSettingsDirtyCount() {
+  if (!currentBuylistVersionInput || !showPriceChangeHighlightsInput) return 0;
+  const currentVersion = String(currentBuylistVersionInput.value || '').trim();
+  const currentHighlight = showPriceChangeHighlightsInput.value === '1';
+  const settingsChanged =
+    currentVersion !== String(adminSettings.current_buylist_version || '') ||
+    currentHighlight !== Boolean(adminSettings.show_price_change_highlights_public);
+  if (settingsChanged) return 1;
+
+  const optionalPairs = [
+    [shipToBusinessNameInput, adminSettings.ship_to_business_name],
+    [shipToContactNameInput, adminSettings.ship_to_contact_name],
+    [shipToAddressLine1Input, adminSettings.ship_to_address_line1],
+    [shipToAddressLine2Input, adminSettings.ship_to_address_line2],
+    [shipToCityInput, adminSettings.ship_to_city],
+    [shipToStateInput, adminSettings.ship_to_state],
+    [shipToPostalCodeInput, adminSettings.ship_to_postal_code],
+    [shipToCountryInput, adminSettings.ship_to_country],
+    [packingNextStepsTextInput, adminSettings.packing_next_steps_text],
+  ];
+  return optionalPairs.some(([input, value]) => input && String(input.value || '') !== String(value || '')) ? 1 : 0;
+}
+
+function collectDirtyFaqRows() {
+  if (!faqWrap) return [];
+  const baseline = new Map(faqs.map((faq) => [Number(faq.id), faq]));
+  const dirty = [];
+  faqWrap.querySelectorAll('tr[data-faq-id]').forEach((row) => {
+    const id = Number(row.getAttribute('data-faq-id'));
+    if (!Number.isInteger(id)) return;
+    const original = baseline.get(id);
+    if (!original) return;
+    const questionInput = row.querySelector(`input[data-field="question"][data-id="${id}"]`);
+    const answerInput = row.querySelector(`textarea[data-field="answer"][data-id="${id}"]`);
+    const sortOrderInput = row.querySelector(`input[data-field="sort_order"][data-id="${id}"]`);
+    const activeInput = row.querySelector(`select[data-field="active"][data-id="${id}"]`);
+    if (!questionInput || !answerInput || !sortOrderInput || !activeInput) return;
+    const next = {
+      id,
+      question: questionInput.value.trim(),
+      answer: answerInput.value.trim(),
+      sortOrder: Number(sortOrderInput.value || 0),
+      active: activeInput.value === '1',
+    };
+    const changed =
+      next.question !== String(original.question || '') ||
+      next.answer !== String(original.answer || '') ||
+      Number(next.sortOrder || 0) !== Number(original.sort_order || 0) ||
+      next.active !== Boolean(original.active);
+    if (changed) dirty.push(next);
+  });
+  return dirty;
+}
+
+function getFaqDirtyCount() {
+  return collectDirtyFaqRows().length;
+}
+
+async function saveDirtyFaqRows() {
+  const dirtyRows = collectDirtyFaqRows();
+  if (dirtyRows.length === 0) {
+    renderNotice('No FAQ edits to save.');
+    return;
+  }
+
+  const failures = [];
+  for (const row of dirtyRows) {
+    try {
+      const res = await adminFetch(`/api/admin/faqs/${row.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          question: row.question,
+          answer: row.answer,
+          sortOrder: row.sortOrder,
+          active: row.active,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || `Could not update FAQ ${row.id}`);
+    } catch (error) {
+      failures.push(error.message || `FAQ ${row.id} failed`);
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Saved with ${failures.length} error(s): ${failures[0]}`);
+  }
+
+  await loadFaqs();
+  renderNotice(`Saved ${dirtyRows.length} FAQ change${dirtyRows.length === 1 ? '' : 's'}.`);
+  showToast('Saved');
+}
+
+function getTabSaveCount(tab) {
+  if (tab === 'buylist') return getDirtyCount();
+  if (tab === 'settings') return getSettingsDirtyCount();
+  if (tab === 'content') return getFaqDirtyCount();
+  return 0;
+}
+
+function updateTopActionBar() {
+  const tab = safeAdminTab(activeAdminTab);
+  const saveCount = getTabSaveCount(tab);
+  const hasSaveAction = tab === 'buylist' || tab === 'content' || tab === 'settings';
+  const showPublish = tab === 'buylist' || tab === 'settings';
+  const showBuylistTools = tab === 'buylist';
+  const showRefresh = tab === 'buylist' || tab === 'submissions';
+
+  setElementVisibility(topSaveChangesBtn, hasSaveAction);
+  if (topSaveChangesBtn) {
+    topSaveChangesBtn.disabled = saveCount <= 0;
+    topSaveChangesBtn.textContent = saveCount > 0 ? `Save Changes (${saveCount})` : 'Save Changes';
+  }
+  setElementVisibility(topPublishSnapshotBtn, showPublish);
+  if (topPublishSnapshotBtn) {
+    const publishBlocked = tab === 'buylist' && getDirtyCount() > 0;
+    topPublishSnapshotBtn.disabled = publishBlocked;
+    topPublishSnapshotBtn.title = publishBlocked ? 'Save game changes before publishing a snapshot.' : '';
+  }
+  setElementVisibility(topImportCsvBtn, showBuylistTools);
+  setElementVisibility(topExportCsvBtn, showBuylistTools);
+  setElementVisibility(topExportFilteredCsvBtn, showBuylistTools);
+  setElementVisibility(topRefreshBtn, showRefresh);
+}
+
+function setActiveAdminTab(tab, { persist = true } = {}) {
+  const next = safeAdminTab(tab);
+  activeAdminTab = next;
+  if (persist) saveAdminTabPreference(next);
+  adminTabButtons.forEach((btn) => {
+    const tabName = safeAdminTab(btn.getAttribute('data-admin-tab'));
+    btn.classList.toggle('is-active', tabName === next);
+  });
+  adminTabPanels.forEach((panel) => {
+    const panelTab = safeAdminTab(panel.getAttribute('data-admin-tab-panel'));
+    panel.classList.toggle('is-active', panelTab === next);
+  });
+  updateTopActionBar();
+}
+
+function renderDashboardCards() {
+  if (dashPendingCount) dashPendingCount.textContent = String(Number(dashboardState.pendingSubmissionsCount || 0));
+  if (dashSubmissions7d) dashSubmissions7d.textContent = String(Number(dashboardState.submissionsLast7DaysCount || 0));
+  if (dashActiveTitles) dashActiveTitles.textContent = String(Number(dashboardState.activeTitlesCount || 0));
+  if (dashLastPublish) {
+    dashLastPublish.textContent = dashboardState.lastPublishedAt ? formatDateTime(dashboardState.lastPublishedAt) : '-';
+  }
+  if (dashCurrentVersion) {
+    const version = String(dashboardState.currentBuylistVersion || adminSettings.current_buylist_version || '').trim();
+    dashCurrentVersion.textContent = version || '-';
+  }
+}
+
+async function loadDashboardMetrics(options = {}) {
+  const payload = await requestAdminJson('/api/admin/dashboard', {
+    source: 'dashboard',
+    timeoutMs: options.timeoutMs || 12000,
+    retries: Number.isInteger(options.retries) ? options.retries : 1,
+  });
+  const body = assertObjectPayload(payload, 'dashboard', 'Invalid dashboard payload.');
+  dashboardState = {
+    pendingSubmissionsCount: Number(body.pendingSubmissionsCount || 0),
+    submissionsLast7DaysCount: Number(body.submissionsLast7DaysCount || 0),
+    activeTitlesCount: Number(body.activeTitlesCount || 0),
+    lastPublishedAt: body.lastPublishedAt || null,
+    currentBuylistVersion: body.currentBuylistVersion || adminSettings.current_buylist_version || '',
+  };
+  renderDashboardCards();
+}
+
 function normalizeChangeDirection(rawDirection) {
   const direction = String(rawDirection || '').toLowerCase();
   if (direction === 'up' || direction === 'down' || direction === 'same' || direction === 'new') return direction;
@@ -344,6 +616,9 @@ function renderPublishMeta() {
   if (showPriceChangeHighlightsInput) {
     showPriceChangeHighlightsInput.value = adminSettings.show_price_change_highlights_public ? '1' : '0';
   }
+  updateAdminStatusIndicators(adminApp && adminApp.style.display !== 'none');
+  renderDashboardCards();
+  updateTopActionBar();
 }
 
 function renderPlatformSelect(id, selectedValue) {
@@ -861,6 +1136,7 @@ function updateSaveChangesUi() {
     publishBuylistSnapshotBtn.disabled = count > 0;
     publishBuylistSnapshotBtn.title = count > 0 ? 'Save changes before publishing a snapshot.' : '';
   }
+  updateTopActionBar();
 }
 
 function updateFilterCount({ start = 0, end = 0, filteredTotal = 0, total = 0 } = {}) {
@@ -1011,7 +1287,7 @@ function renderGamesTable() {
           <th>Condition</th>
           <th>Price</th>
           <th>Active</th>
-          <th>Actions</th>
+          <th class="games-actions-col">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -1050,8 +1326,8 @@ function renderGamesTable() {
                   </select>
                 </td>
                 <td class="row-actions">
-                  <button class="secondary" data-action="reset-row" data-id="${id}" type="button">Reset</button>
-                  <button class="danger" data-action="delete-row" data-id="${id}" type="button">Delete</button>
+                  <button class="secondary small" data-action="reset-row" data-id="${id}" type="button">Reset</button>
+                  <button class="danger small" data-action="delete-row" data-id="${id}" type="button">Delete</button>
                 </td>
               </tr>
             `;
@@ -1182,10 +1458,12 @@ async function saveDirtyChanges() {
     renderNotice(`Saved with ${failures.length} error(s): ${failures[0]}`, 'error');
     showToast('Some changes failed', 'error');
     await loadGames();
+    await loadDashboardMetrics({ retries: 1 }).catch(() => {});
     return;
   }
 
   await loadGames();
+  await loadDashboardMetrics({ retries: 1 }).catch(() => {});
   markBuylistUpdated();
   renderNotice(`Saved ${dirtyIds.length} change${dirtyIds.length === 1 ? '' : 's'}.`);
   showToast('Saved');
@@ -1497,8 +1775,8 @@ function renderSubmissionsTable(rows) {
             <td>${money(row.estimated_total || 0)}</td>
             <td><span class="submission-status ${submissionStatusClass(row.status)}">${escapeHtml(row.status)}</span></td>
             <td class="row-actions">
-              <button class="secondary" data-action="view-submission" data-id="${row.id}">View</button>
-              <button class="secondary" data-action="export-submission" data-id="${row.id}">Export CSV</button>
+              <button class="secondary small" data-action="view-submission" data-id="${row.id}">View</button>
+              <button class="secondary small" data-action="export-submission" data-id="${row.id}">Export CSV</button>
             </td>
           </tr>
         `
@@ -1782,8 +2060,8 @@ function renderFaqsTable() {
               </select>
             </td>
             <td class="row-actions">
-              <button class="secondary" data-action="save-faq" data-id="${f.id}">Save</button>
-              <button class="danger" data-action="delete-faq" data-id="${f.id}">Delete</button>
+              <button class="secondary small" data-action="save-faq" data-id="${f.id}">Save</button>
+              <button class="danger small" data-action="delete-faq" data-id="${f.id}">Delete</button>
             </td>
           </tr>
         `
@@ -1835,6 +2113,13 @@ function renderFaqsTable() {
       }
     });
   });
+
+  faqWrap.querySelectorAll('input[data-field], textarea[data-field], select[data-field]').forEach((el) => {
+    const eventName = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(eventName, () => {
+      updateTopActionBar();
+    });
+  });
 }
 
 async function loadFaqs() {
@@ -1845,6 +2130,7 @@ async function loadFaqs() {
   });
   faqs = assertArrayPayload(payload, 'faqs', 'Invalid FAQ response format.');
   renderFaqsTable();
+  updateTopActionBar();
 }
 
 function gameFilterQueryString() {
@@ -1918,9 +2204,18 @@ async function bootstrapAdmin(options = {}) {
   renderFaqsTable();
 
   adminApp.style.display = 'block';
+  updateAdminStatusIndicators(true);
+  setAdminDensityMode(adminDensityMode, { persist: false });
+  setActiveAdminTab(activeAdminTab, { persist: false });
   loadQuickAddDefaults();
   updateImportReplaceConfirmVisibility();
   renderNotice('');
+  try {
+    await loadDashboardMetrics({ retries: 1 });
+  } catch (dashboardErr) {
+    renderNotice(`Dashboard metrics unavailable: ${formatLoadError(dashboardErr, 'Could not load dashboard metrics.')}`, 'warn');
+  }
+  updateTopActionBar();
   if (!showConnectNotice) return;
   if (runtimeInfo.ephemeralStorage) {
     renderConnectNotice(
@@ -1943,6 +2238,7 @@ async function reloadAdminData() {
     return;
   } catch (bootstrapError) {
     const sectionLoaders = [
+      ['dashboard', () => loadDashboardMetrics({ retries: 1 })],
       ['settings', () => loadAdminSettings({ retries: 1 })],
       ['games', () => loadGames()],
       ['submissions', () => loadSubmissions(submissionsState.page || 1)],
@@ -1984,6 +2280,7 @@ async function handleConnect() {
     await bootstrapAdmin();
   } catch (err) {
     adminApp.style.display = 'none';
+    updateAdminStatusIndicators(false);
     renderConnectNotice(formatLoadError(err, 'Could not connect to admin.'), 'error', { retry: true });
   } finally {
     setConnectUiState(false);
@@ -2003,14 +2300,128 @@ if (adminKeyInput) {
   });
 }
 
+adminTabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    setActiveAdminTab(btn.getAttribute('data-admin-tab'));
+  });
+});
+
+if (dashGoSubmissionsBtn) {
+  dashGoSubmissionsBtn.addEventListener('click', () => setActiveAdminTab('submissions'));
+}
+if (dashGoBuylistBtn) {
+  dashGoBuylistBtn.addEventListener('click', () => setActiveAdminTab('buylist'));
+}
+if (dashGoContentBtn) {
+  dashGoContentBtn.addEventListener('click', () => setActiveAdminTab('content'));
+}
+
+if (densityCompactBtn) {
+  densityCompactBtn.addEventListener('click', () => {
+    setAdminDensityMode('compact');
+  });
+}
+if (densityComfortableBtn) {
+  densityComfortableBtn.addEventListener('click', () => {
+    setAdminDensityMode('comfortable');
+  });
+}
+
+if (topSaveChangesBtn) {
+  topSaveChangesBtn.addEventListener('click', async () => {
+    try {
+      if (activeAdminTab === 'buylist') {
+        await saveDirtyChanges();
+        return;
+      }
+      if (activeAdminTab === 'settings') {
+        await saveAdminSettings();
+        await loadGames();
+        await loadDashboardMetrics({ retries: 1 });
+        renderNotice('Settings saved.');
+        showToast('Saved');
+        return;
+      }
+      if (activeAdminTab === 'content') {
+        await saveDirtyFaqRows();
+      }
+    } catch (err) {
+      renderNotice(err.message || 'Could not save changes.', 'error');
+    } finally {
+      updateTopActionBar();
+    }
+  });
+}
+
+if (topPublishSnapshotBtn) {
+  topPublishSnapshotBtn.addEventListener('click', async () => {
+    try {
+      await publishBuylistSnapshot(false);
+      await loadDashboardMetrics({ retries: 1 });
+    } catch (err) {
+      renderNotice(err.message || 'Could not publish snapshot.', 'error');
+    }
+  });
+}
+
+if (topImportCsvBtn) {
+  topImportCsvBtn.addEventListener('click', () => {
+    if (importCsvInput) importCsvInput.click();
+  });
+}
+
+if (topExportCsvBtn) {
+  topExportCsvBtn.addEventListener('click', async () => {
+    try {
+      await downloadAdminCsv('/api/admin/games/export-csv', 'buylist.csv');
+      showToast('Exported');
+    } catch (err) {
+      renderNotice(err.message || 'Could not export CSV.', 'error');
+    }
+  });
+}
+
+if (topExportFilteredCsvBtn) {
+  topExportFilteredCsvBtn.addEventListener('click', async () => {
+    try {
+      const query = gameFilterQueryString();
+      const url = query ? `/api/admin/games/export-csv?${query}` : '/api/admin/games/export-csv';
+      await downloadAdminCsv(url, 'buylist-filtered.csv');
+      showToast('Exported');
+    } catch (err) {
+      renderNotice(err.message || 'Could not export filtered CSV.', 'error');
+    }
+  });
+}
+
+if (topRefreshBtn) {
+  topRefreshBtn.addEventListener('click', async () => {
+    try {
+      if (activeAdminTab === 'submissions') {
+        await loadSubmissions(submissionsState.page || 1);
+        await loadDashboardMetrics({ retries: 1 });
+        renderNotice('Submissions refreshed.');
+      } else {
+        if (getDirtyCount() > 0 && !confirm('You have unsaved changes. Refresh and discard them?')) return;
+        await reloadAdminData();
+      }
+    } catch (err) {
+      renderNotice(formatLoadError(err, 'Could not refresh.'), 'error');
+    }
+  });
+}
+
 saveBuylistVersionBtn.addEventListener('click', async () => {
   try {
     await saveAdminSettings();
     renderNotice('Settings saved.');
     showToast('Saved');
     await loadGames();
+    await loadDashboardMetrics({ retries: 1 });
   } catch (err) {
     renderNotice(err.message, 'error');
+  } finally {
+    updateTopActionBar();
   }
 });
 
@@ -2053,6 +2464,7 @@ addGameForm.addEventListener('submit', async (e) => {
     renderNotice('Game added.');
     showToast(`Added: ${title} (${platform || 'No Platform'})`);
     await loadGames();
+    await loadDashboardMetrics({ retries: 1 });
     markBuylistUpdated();
   } catch (err) {
     renderNotice(err.message, 'error');
@@ -2063,6 +2475,7 @@ refreshGamesBtn.addEventListener('click', async () => {
   if (getDirtyCount() > 0 && !confirm('You have unsaved changes. Refresh and discard them?')) return;
   try {
     await reloadAdminData();
+    await loadDashboardMetrics({ retries: 1 });
   } catch (err) {
     renderNotice(formatLoadError(err, 'Could not refresh admin data.'), 'error');
   }
@@ -2149,6 +2562,7 @@ if (commitImportBtn) {
       if (!res.ok) throw new Error(body.error || 'Import failed');
       hideImportPreview();
       await loadGames();
+      await loadDashboardMetrics({ retries: 1 }).catch(() => {});
       markBuylistUpdated();
       renderNotice(
         `Import complete. Added ${Number(body.inserted || 0)}, updated ${Number(body.updated || 0)}, skipped ${Number(
@@ -2199,6 +2613,26 @@ function bindGameFilterEvents() {
 }
 
 bindGameFilterEvents();
+
+[
+  currentBuylistVersionInput,
+  showPriceChangeHighlightsInput,
+  shipToBusinessNameInput,
+  shipToContactNameInput,
+  shipToAddressLine1Input,
+  shipToAddressLine2Input,
+  shipToCityInput,
+  shipToStateInput,
+  shipToPostalCodeInput,
+  shipToCountryInput,
+  packingNextStepsTextInput,
+].forEach((el) => {
+  if (!el) return;
+  const eventName = el.tagName === 'SELECT' ? 'change' : 'input';
+  el.addEventListener(eventName, () => {
+    updateTopActionBar();
+  });
+});
 
 if (applyBulkActiveBtn) {
   applyBulkActiveBtn.addEventListener('click', () => {
@@ -2377,3 +2811,8 @@ submissionDetailModal.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeSubmissionDetailModal();
 });
+
+setAdminDensityMode(adminDensityMode, { persist: false });
+setActiveAdminTab(activeAdminTab, { persist: false });
+updateAdminStatusIndicators(false);
+renderDashboardCards();
