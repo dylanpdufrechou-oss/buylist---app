@@ -2,6 +2,10 @@ const buylistWrap = document.getElementById('buylistTableWrap');
 const platformTabsWrap = document.getElementById('platformTabs');
 const searchInput = document.getElementById('search');
 const clearSearchBtn = document.getElementById('clearSearch');
+const comfortModeInput = document.getElementById('comfortMode');
+const homeRowsPerPageInput = document.getElementById('homeRowsPerPage');
+const homeViewingPerPage = document.getElementById('homeViewingPerPage');
+const homePaginationWrap = document.getElementById('homePagination');
 const shipmentSection = document.getElementById('shipmentSection');
 const mobileSubmitAmount = document.getElementById('mobileSubmitAmount');
 const mobileSubmitCount = document.getElementById('mobileSubmitCount');
@@ -20,6 +24,10 @@ const SNAPSHOT_GRACE_MS = 5 * 60 * 1000;
 const MOBILE_PLATFORM_BREAKPOINT_QUERY = '(max-width: 640px)';
 const ALL_PLATFORMS_VALUE = '__all__';
 const TITLE_PREVIEW_HOLD_MS = 220;
+const HOME_ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
+const HOME_ROWS_PER_PAGE_DEFAULT = 25;
+const HOME_ROWS_PER_PAGE_STORAGE_KEY = 'homeRowsPerPage';
+const PUBLIC_COMFORT_MODE_STORAGE_KEY = 'publicComfortMode';
 
 let games = [];
 const qtyMap = new Map();
@@ -46,6 +54,10 @@ let titlePreviewBubble = null;
 let titlePreviewHoldTimer = 0;
 let titlePreviewTrigger = null;
 let titlePreviewHoldTriggered = false;
+let homeTableState = {
+  page: 1,
+  pageSize: loadHomeRowsPerPagePreference(),
+};
 
 function escapeHtml(str) {
   return String(str || '')
@@ -58,6 +70,58 @@ function escapeHtml(str) {
 
 function asMoney(price) {
   return `$${Number(price).toFixed(2)}`;
+}
+
+function normalizeHomeRowsPerPage(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return HOME_ROWS_PER_PAGE_DEFAULT;
+  return HOME_ROWS_PER_PAGE_OPTIONS.includes(parsed) ? parsed : HOME_ROWS_PER_PAGE_DEFAULT;
+}
+
+function loadHomeRowsPerPagePreference() {
+  try {
+    return normalizeHomeRowsPerPage(localStorage.getItem(HOME_ROWS_PER_PAGE_STORAGE_KEY));
+  } catch {
+    return HOME_ROWS_PER_PAGE_DEFAULT;
+  }
+}
+
+function saveHomeRowsPerPagePreference(value) {
+  try {
+    localStorage.setItem(HOME_ROWS_PER_PAGE_STORAGE_KEY, String(normalizeHomeRowsPerPage(value)));
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
+function applyComfortMode(enabled) {
+  document.body.classList.toggle('comfort-mode-on', Boolean(enabled));
+  if (comfortModeInput) comfortModeInput.value = enabled ? 'on' : 'off';
+}
+
+function loadComfortModePreference() {
+  try {
+    return localStorage.getItem(PUBLIC_COMFORT_MODE_STORAGE_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
+
+function saveComfortModePreference(enabled) {
+  try {
+    localStorage.setItem(PUBLIC_COMFORT_MODE_STORAGE_KEY, enabled ? 'on' : 'off');
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
+function syncHomeRowsPerPageControl() {
+  if (homeRowsPerPageInput) {
+    homeRowsPerPageInput.value = String(normalizeHomeRowsPerPage(homeTableState.pageSize));
+  }
+  if (homeViewingPerPage) {
+    homeViewingPerPage.textContent = `Viewing ${normalizeHomeRowsPerPage(homeTableState.pageSize)} per page`;
+  }
 }
 
 function formatSignedMoneyFromCents(cents) {
@@ -449,6 +513,7 @@ function renderTabs() {
     if (select) {
       select.addEventListener('change', () => {
         activePlatformTab = select.value || ALL_PLATFORMS_VALUE;
+        homeTableState.page = 1;
         renderTabs();
         renderTable();
         if (searchInput) searchInput.focus();
@@ -478,6 +543,7 @@ function renderTabs() {
   platformTabsWrap.querySelectorAll('button[data-platform-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       activePlatformTab = btn.getAttribute('data-platform-tab');
+      homeTableState.page = 1;
       renderTabs();
       renderTable();
     });
@@ -586,10 +652,56 @@ function renderSelectedItems() {
   });
 }
 
+function renderHomePagination(totalRows, visibleRows, startIndex, totalPages) {
+  if (!homePaginationWrap) return;
+  homePaginationWrap.innerHTML = '';
+  if (totalRows <= 0) return;
+
+  const prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
+  prevBtn.className = 'secondary';
+  prevBtn.textContent = 'Prev';
+  prevBtn.disabled = homeTableState.page <= 1;
+
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.className = 'secondary';
+  nextBtn.textContent = 'Next';
+  nextBtn.disabled = homeTableState.page >= totalPages;
+
+  const pageInfo = document.createElement('span');
+  pageInfo.className = 'muted';
+  pageInfo.textContent = `Page ${homeTableState.page} of ${totalPages}`;
+
+  const rangeInfo = document.createElement('span');
+  rangeInfo.className = 'muted';
+  const start = startIndex + 1;
+  const end = startIndex + visibleRows.length;
+  rangeInfo.textContent = `Showing ${start}\u2013${end} of ${totalRows}`;
+
+  prevBtn.addEventListener('click', () => {
+    homeTableState.page = Math.max(1, homeTableState.page - 1);
+    renderTable();
+  });
+  nextBtn.addEventListener('click', () => {
+    homeTableState.page = Math.min(totalPages, homeTableState.page + 1);
+    renderTable();
+  });
+
+  homePaginationWrap.append(prevBtn, nextBtn, pageInfo, rangeInfo);
+}
+
 function renderTable() {
   if (!activePlatformTab) {
     activePlatformTab = isMobilePlatformUi ? ALL_PLATFORMS_VALUE : platformTabs[0] || '';
     renderTabs();
+  }
+
+  if (!activePlatformTab) {
+    tableMeta.textContent = 'Buylist';
+    if (homePaginationWrap) homePaginationWrap.innerHTML = '';
+    buylistWrap.innerHTML = '<p class="muted">No console tabs are configured.</p>';
+    return;
   }
 
   const q = searchInput.value.trim().toLowerCase();
@@ -598,12 +710,26 @@ function renderTable() {
     if (!matchesPlatformTab(g, activePlatformTab)) return false;
     return `${g.title} ${g.platform || ''}`.toLowerCase().includes(q);
   });
-  tableMeta.textContent = `${selectedPlatformLabel} Buylist`;
+
+  const pageSize = normalizeHomeRowsPerPage(homeTableState.pageSize);
+  homeTableState.pageSize = pageSize;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  homeTableState.page = Math.min(Math.max(1, homeTableState.page), totalPages);
+  const startIndex = filtered.length > 0 ? (homeTableState.page - 1) * pageSize : 0;
+  const visibleRows = filtered.slice(startIndex, startIndex + pageSize);
+  syncHomeRowsPerPageControl();
 
   if (filtered.length === 0) {
+    tableMeta.textContent = `${selectedPlatformLabel} Buylist \u2022 Showing 0 of 0`;
+    renderHomePagination(0, [], 0, 1);
     buylistWrap.innerHTML = `<p class="muted">No matching games found for ${escapeHtml(selectedPlatformLabel)}.</p>`;
     return;
   }
+
+  tableMeta.textContent = `${selectedPlatformLabel} Buylist \u2022 Showing ${startIndex + 1}\u2013${
+    startIndex + visibleRows.length
+  } of ${filtered.length}`;
+  renderHomePagination(filtered.length, visibleRows, startIndex, totalPages);
 
   buylistWrap.innerHTML = `
     <table class="sheet-table">
@@ -616,7 +742,7 @@ function renderTable() {
         </tr>
       </thead>
       <tbody>
-        ${filtered
+        ${visibleRows
           .map((g) => {
             const deltaMeta = priceDeltaMeta(g);
             const rowClass = deltaMeta.className ? `delta-${deltaMeta.className}` : '';
@@ -683,11 +809,35 @@ async function loadFaqs() {
   renderFaqs(rows);
 }
 
-searchInput.addEventListener('input', renderTable);
-clearSearchBtn.addEventListener('click', () => {
-  searchInput.value = '';
+searchInput.addEventListener('input', () => {
+  homeTableState.page = 1;
   renderTable();
 });
+clearSearchBtn.addEventListener('click', () => {
+  searchInput.value = '';
+  homeTableState.page = 1;
+  renderTable();
+});
+
+if (homeRowsPerPageInput) {
+  syncHomeRowsPerPageControl();
+  homeRowsPerPageInput.addEventListener('change', () => {
+    const nextPageSize = normalizeHomeRowsPerPage(homeRowsPerPageInput.value);
+    homeTableState.pageSize = nextPageSize;
+    homeTableState.page = 1;
+    saveHomeRowsPerPagePreference(nextPageSize);
+    syncHomeRowsPerPageControl();
+    renderTable();
+  });
+}
+
+if (comfortModeInput) {
+  comfortModeInput.addEventListener('change', () => {
+    const enabled = comfortModeInput.value === 'on';
+    applyComfortMode(enabled);
+    saveComfortModePreference(enabled);
+  });
+}
 
 if (mobileGoToSubmitBtn) {
   mobileGoToSubmitBtn.addEventListener('click', () => {
@@ -748,6 +898,8 @@ form.addEventListener('submit', async (e) => {
 });
 
 setupMobileTitlePreview();
+applyComfortMode(loadComfortModePreference());
+syncHomeRowsPerPageControl();
 
 loadGames().catch(() => {
   renderTabs();
@@ -760,6 +912,9 @@ loadFaqs().catch(() => {
 });
 
 window.addEventListener('storage', (e) => {
+  if (e.key === PUBLIC_COMFORT_MODE_STORAGE_KEY) {
+    applyComfortMode(loadComfortModePreference());
+  }
   if (e.key === BUYLIST_UPDATED_EVENT) {
     const snapshot = loadSnapshotFromStorage();
     if (snapshot) {
@@ -784,6 +939,7 @@ function handleMobilePlatformModeChange() {
   const nextMode = mobilePlatformMedia.matches;
   if (nextMode === isMobilePlatformUi) return;
   isMobilePlatformUi = nextMode;
+  homeTableState.page = 1;
   if (!isMobilePlatformUi && activePlatformTab === ALL_PLATFORMS_VALUE) {
     activePlatformTab = platformTabs[0] || '';
   }

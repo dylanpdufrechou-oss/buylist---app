@@ -113,6 +113,13 @@
             <h2 style="margin: 0">Check What Your Collection Is Worth</h2>
             <p class="muted" style="margin: 0.45rem 0 0">Prices updated monthly. Lock in current rates now.</p>
           </div>
+          <label for="comfortMode" class="comfort-mode-control">
+            <span>Comfort Mode</span>
+            <select id="comfortMode">
+              <option value="off">Off</option>
+              <option value="on">On</option>
+            </select>
+          </label>
         </div>
         <div class="tabs-and-badge">
           <div id="platformTabs" class="platform-tabs"></div>
@@ -126,7 +133,23 @@
           <input id="search" placeholder="Start typing your game title..." autocomplete="off" />
           <button id="clearSearch" class="secondary">Clear</button>
         </div>
-        <p id="tableMeta" class="muted"></p>
+        <div class="home-table-toolbar">
+          <p id="tableMeta" class="muted"></p>
+          <div class="home-table-controls">
+            <label for="homeRowsPerPage" class="home-rows-label">
+              <span>Rows per page</span>
+              <select id="homeRowsPerPage">
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+            <span id="homeViewingPerPage" class="muted home-viewing-text">Viewing 25 per page</span>
+            <div id="homePagination" class="home-pagination"></div>
+          </div>
+        </div>
         <div id="buylistTableWrap" class="buylist-table-wrap"></div>
       </section>
 
