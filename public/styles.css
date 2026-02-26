@@ -2144,6 +2144,49 @@ body.retro-theme.comfort-mode-on {
   background: linear-gradient(140deg, rgba(20, 31, 66, 0.9), rgba(16, 23, 52, 0.92));
 }
 
+.retro-theme header {
+  position: relative;
+  background: linear-gradient(145deg, rgba(10, 18, 42, 0.96), rgba(8, 15, 35, 0.97));
+}
+
+.retro-theme .top-nav {
+  position: relative;
+}
+
+.retro-theme .top-nav::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.5rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(118, 166, 230, 0.46), transparent);
+  pointer-events: none;
+}
+
+.retro-theme .brand-link {
+  position: relative;
+  isolation: isolate;
+}
+
+.retro-theme .brand-link::before {
+  content: "";
+  position: absolute;
+  inset: 16% -2% 14%;
+  z-index: -1;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 50%, rgba(53, 145, 228, 0.22), rgba(53, 145, 228, 0) 68%);
+  pointer-events: none;
+}
+
+.retro-theme .brand-logo {
+  filter:
+    brightness(1.14)
+    saturate(1.12)
+    drop-shadow(0 5px 13px rgba(7, 17, 46, 0.55))
+    drop-shadow(0 0 10px rgba(73, 163, 236, 0.22));
+}
+
 .retro-theme .card {
   background: linear-gradient(180deg, rgba(23, 32, 64, 0.9), rgba(17, 24, 48, 0.92));
 }
@@ -2275,6 +2318,18 @@ body.retro-theme.comfort-mode-on {
 
 .retro-theme.comfort-mode-on .buylist-table-wrap .sheet-table tbody td {
   color: #e0e7f5;
+}
+
+.retro-theme.comfort-mode-on .brand-link::before {
+  background: radial-gradient(circle at 50% 50%, rgba(53, 145, 228, 0.16), rgba(53, 145, 228, 0) 68%);
+}
+
+.retro-theme.comfort-mode-on .brand-logo {
+  filter:
+    brightness(1.1)
+    saturate(1.08)
+    drop-shadow(0 4px 10px rgba(7, 17, 46, 0.5))
+    drop-shadow(0 0 8px rgba(73, 163, 236, 0.16));
 }
 
 .comfort-mode-control {
