@@ -121,11 +121,11 @@ header {
 .brand-logo {
   display: block;
   width: auto;
-  height: clamp(96px, 10vw, 126px);
+  height: clamp(74px, 8.2vw, 94px);
   max-width: 100%;
   object-fit: contain;
   object-position: center;
-  transform: translateY(10px) scale(1.06);
+  transform: translateY(2px) scale(1);
   transform-origin: center center;
   filter: drop-shadow(0 4px 12px rgba(5, 14, 40, 0.35));
   image-rendering: auto;
@@ -2364,9 +2364,9 @@ body.retro-theme.comfort-mode-on {
 
   .brand-logo {
     width: auto;
-    height: clamp(76px, 16vw, 104px);
+    height: clamp(58px, 13.5vw, 78px);
     max-width: 100%;
-    transform: translateY(8px) scale(1.04);
+    transform: translateY(1px) scale(1);
   }
 
   .top-nav-home {
