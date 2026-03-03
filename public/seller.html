@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>I_BuyGames - Start Your Shipment</title>
+    <title>I_BuyGames - Search & Ship</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -12,18 +12,8 @@
     />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="retro-theme has-mobile-submit-bar compact">
-    <main class="container">
-      <div id="stickyPayout" class="sticky-payout" hidden>Estimated Payout: $0.00</div>
-      <div id="mobileSubmitBar" class="mobile-submit-bar">
-        <div class="mobile-submit-meta">
-          <span class="mobile-submit-label">Estimated Payout</span>
-          <strong id="mobileSubmitAmount" class="mobile-submit-amount">$0.00</strong>
-          <span id="mobileSubmitCount" class="mobile-submit-count">0 items</span>
-        </div>
-        <button id="mobileGoToSubmit" type="button" class="mobile-submit-cta">Go To Submit</button>
-      </div>
-
+  <body class="retro-theme public-seller-page has-mobile-cart-bar">
+    <main class="container public-shell seller-page-shell">
       <header class="top-nav">
         <a href="/" class="brand-link" aria-label="I_BuyGames Buylist home">
           <img
@@ -39,60 +29,49 @@
         <a href="/" class="top-nav-home">Home</a>
       </header>
 
-      <section id="buylist-tool" class="card buylist-card">
-        <div id="stepProgress" class="step-progress" aria-label="Progress">
-          <span class="step-pill is-active" data-step="1">Step 1: Add Games</span>
-          <span class="step-pill" data-step="2">Step 2: Enter Info</span>
-          <span class="step-pill" data-step="3">Step 3: Print Packing Slip</span>
-        </div>
-        <div class="section-head">
+      <section id="sellerSearchBar" class="card seller-search-shell">
+        <div class="seller-search-topline">
           <div>
-            <h2 style="margin: 0">Check What Your Collection Is Worth</h2>
-            <p class="muted" style="margin: 0.45rem 0 0">Prices updated monthly. Lock in current rates now.</p>
+            <p class="section-kicker">Instant Offer Search</p>
+            <h2>Find your titles and build your shipment</h2>
           </div>
-          <label for="comfortMode" class="comfort-mode-control">
-            <span>Comfort Mode</span>
-            <select id="comfortMode">
-              <option value="off">Off</option>
-              <option value="on">On</option>
-            </select>
-          </label>
+          <div id="sellerResultsMeta" class="seller-results-meta muted">Search for a title to begin</div>
         </div>
-        <div class="tabs-and-badge">
-          <div id="platformTabs" class="platform-tabs"></div>
-          <span
-            class="cib-badge"
-            title="We currently only purchase Complete In Box copies in 9/10 condition or better."
-            >CIB Only &ndash; 9/10 Condition Required</span
-          >
+        <div class="seller-search-controls">
+          <input
+            id="sellerSearchInput"
+            type="search"
+            autocomplete="off"
+            placeholder="Search by game title or scan barcode..."
+            aria-label="Search by game title or barcode"
+          />
+          <select id="sellerPlatformFilter" aria-label="Filter by platform">
+            <option value="all">All systems</option>
+          </select>
+          <button id="sellerSearchSubmit" type="button">Search</button>
+          <button id="sellerScanButton" type="button" class="secondary">Scan</button>
+          <button id="sellerSearchClear" type="button" class="secondary">Clear</button>
         </div>
-        <div class="controls seller-controls">
-          <input id="search" placeholder="Start typing your game title..." autocomplete="off" />
-          <div class="seller-controls-right">
-            <label for="sellerRowsPerPage" class="seller-page-size-label">
-              <span>Rows per page</span>
-              <select id="sellerRowsPerPage">
-                <option value="10">10</option>
-                <option value="20">20</option>
-                <option value="25" selected>25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-            </label>
-            <button id="clearSearch" class="secondary" type="button">Clear</button>
-          </div>
-        </div>
-        <p id="tableMeta" class="muted"></p>
-        <div id="sellerPagination" class="seller-pagination"></div>
-        <div id="buylistTableWrap" class="buylist-table-wrap"></div>
       </section>
 
-      <section id="shipmentSection" class="card is-hidden">
-        <h2 style="margin-top: 0">Shipment Submission</h2>
-        <p class="muted">Qty changes from the console table are tracked here automatically.</p>
+      <section class="card seller-results-shell">
+        <div id="sellerEmptyState" class="seller-empty-state">
+          <h3>Search for a title to begin</h3>
+          <p>Use the search bar above or choose a system filter to browse available titles.</p>
+        </div>
+        <div id="sellerResultsList" class="seller-results-list"></div>
+      </section>
+
+      <section id="shipmentSection" class="card seller-shipment-shell is-hidden">
+        <div class="seller-shipment-head">
+          <div>
+            <p class="section-kicker">Shipment</p>
+            <h2>Review and submit your shipment</h2>
+          </div>
+          <div id="sellerShipmentTotal" class="seller-shipment-total">Estimated Total: $0.00</div>
+        </div>
         <div class="notice warn">
-          <strong>Packing Slip Required:</strong> print and include one packing slip in every box to speed up
-          receiving and avoid delays.
+          <strong>Packing Slip Required:</strong> print and include one packing slip in every box to speed up receiving and avoid delays.
         </div>
         <div id="selectedItemsWrap"></div>
         <div id="message"></div>
@@ -106,18 +85,28 @@
             <input id="totalPreview" disabled />
           </div>
           <textarea id="notes" rows="4" placeholder="Notes"></textarea>
-          <div class="trust-microcopy">
-            <p>Payments sent within 24-48 hours</p>
-            <p>Transparent pricing</p>
-            <p>U.S.-based buyer</p>
-          </div>
-          <button type="submit">Submit & Generate Packing Slip</button>
+          <button type="submit">Submit &amp; Generate Packing Slip</button>
         </form>
         <div id="shipmentPreview"></div>
       </section>
 
+      <section class="card faq-home-section seller-faq-shell">
+        <div class="section-title-row">
+          <p class="section-kicker">FAQ</p>
+          <h2>Before you ship</h2>
+        </div>
+        <div id="sellerFaqList" class="faq-list"></div>
+      </section>
     </main>
-    <script src="/table-align.js"></script>
+
+    <div id="mobileCartBar" class="mobile-cart-bar is-hidden">
+      <div class="mobile-cart-meta">
+        <span id="mobileCartCount">0 items</span>
+        <strong id="mobileCartTotal">$0.00</strong>
+      </div>
+      <button id="mobileCartViewShipment" type="button">View Shipment</button>
+    </div>
+
     <script src="/seller.js"></script>
   </body>
 </html>
