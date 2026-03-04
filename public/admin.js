@@ -27,7 +27,6 @@ const dashGoContentBtn = document.getElementById('dashGoContent');
 
 const currentBuylistVersionInput = document.getElementById('currentBuylistVersion');
 const showPriceChangeHighlightsInput = document.getElementById('showPriceChangeHighlights');
-const homepagePaidOutTextInput = document.getElementById('homepagePaidOutText');
 const shipToBusinessNameInput = document.getElementById('shipToBusinessName');
 const shipToContactNameInput = document.getElementById('shipToContactName');
 const shipToAddressLine1Input = document.getElementById('shipToAddressLine1');
@@ -56,9 +55,6 @@ const addPlatformInput = document.getElementById('platform');
 const addConditionInput = document.getElementById('condition');
 const addPriceInput = document.getElementById('price');
 const addActiveInput = document.getElementById('active');
-const addUpcInput = document.getElementById('upc');
-const addIsHotInput = document.getElementById('isHot');
-const addGameNotesInput = document.getElementById('gameNotes');
 
 const gamesSearchInput = document.getElementById('gamesSearch');
 const gamesFilterPlatformInput = document.getElementById('gamesFilterPlatform');
@@ -206,7 +202,6 @@ let dashboardState = {
 let adminSettings = {
   current_buylist_version: '',
   show_price_change_highlights_public: true,
-  homepage_paid_out_text: '$25,000+',
   ship_to_business_name: '',
   ship_to_contact_name: '',
   ship_to_address_line1: '',
@@ -374,8 +369,7 @@ function getSettingsDirtyCount() {
   const currentHighlight = showPriceChangeHighlightsInput.value === '1';
   const settingsChanged =
     currentVersion !== String(adminSettings.current_buylist_version || '') ||
-    currentHighlight !== Boolean(adminSettings.show_price_change_highlights_public) ||
-    String(homepagePaidOutTextInput?.value || '') !== String(adminSettings.homepage_paid_out_text || '');
+    currentHighlight !== Boolean(adminSettings.show_price_change_highlights_public);
   if (settingsChanged) return 1;
 
   const optionalPairs = [
@@ -694,9 +688,6 @@ function gameToDraft(game) {
     condition_note: normalizeConditionValue(game.condition_note),
     price: Number(game.price || 0),
     active: Boolean(game.active),
-    upc: String(game.upc || ''),
-    is_hot: Boolean(game.is_hot),
-    notes: String(game.notes || ''),
     previous_price_cents:
       game.previous_price_cents === null || game.previous_price_cents === undefined
         ? null
@@ -733,9 +724,6 @@ function getRowPayloadFromDraft(id) {
     condition: normalizeConditionValue(draft.condition_note),
     price: Number(draft.price),
     active: Boolean(draft.active),
-    upc: String(draft.upc || '').trim(),
-    is_hot: Boolean(draft.is_hot),
-    notes: String(draft.notes || '').trim(),
   };
 }
 
@@ -750,9 +738,6 @@ function isRowChanged(existing, payload, isDeleted = false) {
     payload.platform !== String(existing.platform || '') ||
     normalizeConditionValue(payload.condition) !== normalizeConditionValue(existing.condition_note) ||
     payload.active !== Boolean(existing.active) ||
-    payload.upc !== String(existing.upc || '') ||
-    payload.is_hot !== Boolean(existing.is_hot) ||
-    payload.notes !== String(existing.notes || '') ||
     Number.isNaN(nextPrice) ||
     Math.abs(existingPrice - nextPrice) >= 0.001
   );
@@ -1318,9 +1303,6 @@ function renderGamesTable() {
           <th>Title</th>
           <th>Platform</th>
           <th>Condition</th>
-          <th>UPC</th>
-          <th>Hot</th>
-          <th>Notes</th>
           <th>Price</th>
           <th>Active</th>
           <th class="games-actions-col">Actions</th>
@@ -1341,14 +1323,6 @@ function renderGamesTable() {
                 <td><input data-field="title" data-id="${id}" value="${escapeHtml(draft.title)}" /></td>
                 <td>${renderPlatformSelect(id, draft.platform || '')}</td>
                 <td>${renderConditionSelect(id, draft.condition_note || 'CIB')}</td>
-                <td><input data-field="upc" data-id="${id}" value="${escapeHtml(draft.upc || '')}" /></td>
-                <td>
-                  <select data-field="is_hot" data-id="${id}">
-                    <option value="0" ${!draft.is_hot ? 'selected' : ''}>No</option>
-                    <option value="1" ${draft.is_hot ? 'selected' : ''}>Yes</option>
-                  </select>
-                </td>
-                <td><textarea data-field="notes" data-id="${id}" rows="2">${escapeHtml(draft.notes || '')}</textarea></td>
                 <td>
                   <div class="price-cell-wrap">
                     <input data-field="price" data-id="${id}" type="number" min="0" step="0.01" value="${escapeHtml(
@@ -1413,16 +1387,13 @@ function renderGamesTable() {
     const id = Number(el.getAttribute('data-id'));
     if (!Number.isInteger(id)) return;
 
-    const eventName = field === 'title' || field === 'price' || field === 'upc' || field === 'notes' ? 'input' : 'change';
+    const eventName = field === 'title' || field === 'price' ? 'input' : 'change';
     el.addEventListener(eventName, () => {
       const draft = getDraftById(id);
       if (!draft) return;
       if (field === 'title') draft.title = String(el.value || '');
       if (field === 'platform') draft.platform = String(el.value || '').trim();
       if (field === 'condition_note') draft.condition_note = normalizeConditionValue(el.value);
-      if (field === 'upc') draft.upc = String(el.value || '').trim();
-      if (field === 'is_hot') draft.is_hot = String(el.value) === '1';
-      if (field === 'notes') draft.notes = String(el.value || '');
       if (field === 'price') {
         const value = Number(el.value);
         draft.price = Number.isFinite(value) && value >= 0 ? value : 0;
@@ -1611,7 +1582,6 @@ function applyAdminSettingsData(settings, fallback = {}) {
   adminSettings = {
     current_buylist_version: nextCurrentVersion,
     show_price_change_highlights_public: source.show_price_change_highlights_public !== false,
-    homepage_paid_out_text: source.homepage_paid_out_text || fallback.homepage_paid_out_text || '$25,000+',
     ship_to_business_name: source.ship_to_business_name || fallback.ship_to_business_name || '',
     ship_to_contact_name: source.ship_to_contact_name || fallback.ship_to_contact_name || '',
     ship_to_address_line1: source.ship_to_address_line1 || fallback.ship_to_address_line1 || '',
@@ -1626,7 +1596,6 @@ function applyAdminSettingsData(settings, fallback = {}) {
     comparison_baseline_version: source.comparison_baseline_version || null,
   };
   currentBuylistVersionInput.value = nextCurrentVersion;
-  if (homepagePaidOutTextInput) homepagePaidOutTextInput.value = adminSettings.homepage_paid_out_text;
   if (shipToBusinessNameInput) shipToBusinessNameInput.value = adminSettings.ship_to_business_name;
   if (shipToContactNameInput) shipToContactNameInput.value = adminSettings.ship_to_contact_name;
   if (shipToAddressLine1Input) shipToAddressLine1Input.value = adminSettings.ship_to_address_line1;
@@ -1654,7 +1623,6 @@ async function saveAdminSettings() {
     show_price_change_highlights_public: showPriceChangeHighlightsInput
       ? showPriceChangeHighlightsInput.value === '1'
       : true,
-    homepage_paid_out_text: homepagePaidOutTextInput ? homepagePaidOutTextInput.value.trim() : '$25,000+',
     ship_to_business_name: shipToBusinessNameInput ? shipToBusinessNameInput.value : '',
     ship_to_contact_name: shipToContactNameInput ? shipToContactNameInput.value : '',
     ship_to_address_line1: shipToAddressLine1Input ? shipToAddressLine1Input.value : '',
@@ -2526,9 +2494,6 @@ addGameForm.addEventListener('submit', async (e) => {
       condition,
       price: Number(addPriceInput.value),
       active: addActiveInput.value === '1',
-      upc: addUpcInput ? addUpcInput.value.trim() : '',
-      is_hot: addIsHotInput ? addIsHotInput.value === '1' : false,
-      notes: addGameNotesInput ? addGameNotesInput.value.trim() : '',
     };
 
     const res = await adminFetch('/api/admin/games', {
@@ -2542,9 +2507,6 @@ addGameForm.addEventListener('submit', async (e) => {
     localStorage.setItem(LAST_CONDITION_KEY, condition);
     addTitleInput.value = '';
     addPriceInput.value = '';
-    if (addUpcInput) addUpcInput.value = '';
-    if (addIsHotInput) addIsHotInput.value = '0';
-    if (addGameNotesInput) addGameNotesInput.value = '';
     addTitleInput.focus();
     renderNotice('Game added.');
     showToast(`Added: ${title} (${platform || 'No Platform'})`);
@@ -2703,7 +2665,6 @@ bindGameFilterEvents();
 [
   currentBuylistVersionInput,
   showPriceChangeHighlightsInput,
-  homepagePaidOutTextInput,
   shipToBusinessNameInput,
   shipToContactNameInput,
   shipToAddressLine1Input,

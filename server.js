@@ -308,21 +308,6 @@ function safeString(raw) {
   return String(raw).trim();
 }
 
-function normalizeUpc(raw) {
-  const digits = String(raw ?? '')
-    .replace(/\D+/g, '')
-    .trim();
-  return digits || null;
-}
-
-function normalizeNotes(raw, maxLength = 1000) {
-  return safeString(raw).slice(0, maxLength);
-}
-
-function normalizeHotValue(raw) {
-  return toSettingBoolean(raw, false);
-}
-
 function toSettingBoolean(raw, fallback = true) {
   if (raw === undefined || raw === null || raw === '') return fallback;
   if (typeof raw === 'boolean') return raw;
@@ -424,9 +409,6 @@ function asPublicGame(row) {
     price_cents: priceCents,
     price: centsToMoney(priceCents),
     active: Number(row.active) === 1 || row.active === true,
-    upc: normalizeUpc(row.upc),
-    is_hot: Number(row.is_hot) === 1 || row.is_hot === true,
-    notes: normalizeNotes(row.notes, 1000),
     updated_at: row.updated_at,
     previous_price_cents: previousPriceCents,
     previous_price: previousPriceCents === null ? null : centsToMoney(previousPriceCents),
@@ -580,36 +562,9 @@ async function getPriceComparisonContext(currentBuylistVersion) {
 }
 
 function splitCsvLineSimple(line) {
-  const input = String(line || '');
-  const out = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < input.length; i += 1) {
-    const ch = input[i];
-    const next = input[i + 1];
-
-    if (ch === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (ch === ',' && !inQuotes) {
-      out.push(current.trim());
-      current = '';
-      continue;
-    }
-
-    current += ch;
-  }
-
-  out.push(current.trim());
-  return out;
+  return String(line || '')
+    .split(',')
+    .map((part) => part.trim());
 }
 
 function parseGamesCsv(csvText) {
@@ -619,7 +574,6 @@ function parseGamesCsv(csvText) {
     .filter(Boolean);
 
   const expectedHeader = 'title,platform,condition,price,active';
-  const extendedHeader = 'title,platform,condition,price,active,upc,is_hot,notes';
   if (lines.length < 2) {
     return {
       rows: [],
@@ -628,11 +582,10 @@ function parseGamesCsv(csvText) {
     };
   }
 
-  const normalizedHeader = safeString(lines[0]).toLowerCase();
-  if (normalizedHeader !== expectedHeader && normalizedHeader !== extendedHeader) {
+  if (safeString(lines[0]).toLowerCase() !== expectedHeader) {
     return {
       rows: [],
-      errors: [{ row: 1, reason: `Invalid header. Use: ${expectedHeader} or ${extendedHeader}` }],
+      errors: [{ row: 1, reason: `Invalid header. Use exactly: ${expectedHeader}` }],
       expectedHeader,
     };
   }
@@ -642,23 +595,17 @@ function parseGamesCsv(csvText) {
   for (let i = 1; i < lines.length; i += 1) {
     const rowNumber = i + 1;
     const parts = splitCsvLineSimple(lines[i]);
-    if (parts.length !== 5 && parts.length !== 8) {
-      errors.push({
-        row: rowNumber,
-        reason: 'Expected 5 columns (title,platform,condition,price,active) or 8 columns with upc,is_hot,notes.',
-      });
+    if (parts.length !== 5) {
+      errors.push({ row: rowNumber, reason: 'Expected 5 columns: title,platform,condition,price,active.' });
       continue;
     }
 
-    const [titleRaw, platformRaw, conditionRaw, priceRaw, activeRaw, upcRaw = '', hotRaw = '', notesRaw = ''] = parts;
+    const [titleRaw, platformRaw, conditionRaw, priceRaw, activeRaw] = parts;
     const title = safeString(titleRaw);
     const platform = normalizePlatform(platformRaw);
     const condition = normalizeCondition(conditionRaw);
     const priceCents = parsePriceToCents(priceRaw);
     const active = parseActiveValue(activeRaw);
-    const upc = normalizeUpc(upcRaw);
-    const isHot = parts.length >= 6 ? (normalizeHotValue(hotRaw) ? 1 : 0) : 0;
-    const notes = normalizeNotes(notesRaw);
 
     if (!title) {
       errors.push({ row: rowNumber, reason: 'Missing title.' });
@@ -689,9 +636,6 @@ function parseGamesCsv(csvText) {
       priceCents,
       price: Number((priceCents / 100).toFixed(2)),
       active,
-      upc,
-      isHot,
-      notes,
       key: gameKey(title, platform, condition),
     });
   }
@@ -715,14 +659,8 @@ function buildGameFilterWhere(query) {
 
   const search = safeString(query.search || query.q).toLowerCase();
   if (search) {
-    const numericSearch = normalizeUpc(search);
-    if (numericSearch) {
-      clauses.push('(LOWER(title) LIKE ? OR REPLACE(COALESCE(upc, \'\'), \'-\', \'\') LIKE ?)');
-      params.push(`%${search}%`, `%${numericSearch}%`);
-    } else {
-      clauses.push('LOWER(title) LIKE ?');
-      params.push(`%${search}%`);
-    }
+    clauses.push('LOWER(title) LIKE ?');
+    params.push(`%${search}%`);
   }
 
   const platform = safeString(query.platform);
@@ -764,10 +702,10 @@ function buildGameFilterWhere(query) {
 
 async function getGameRows(includeInactive) {
   const sql = includeInactive
-    ? `SELECT id, title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at
+    ? `SELECT id, title, platform, condition_note, price_cents, active, updated_at
        FROM games
        ORDER BY title ASC`
-    : `SELECT id, title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at
+    : `SELECT id, title, platform, condition_note, price_cents, active, updated_at
        FROM games
        WHERE active = 1
        ORDER BY title ASC`;
@@ -788,9 +726,6 @@ const SQLITE_SCHEMA_SQL = `
     condition_note TEXT,
     price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
     active INTEGER NOT NULL DEFAULT 1,
-    upc TEXT,
-    is_hot INTEGER NOT NULL DEFAULT 0,
-    notes TEXT,
     pricecharting_product_id TEXT,
     market_source TEXT DEFAULT 'pricecharting',
     market_last_checked_at TEXT,
@@ -848,15 +783,6 @@ const SQLITE_SCHEMA_SQL = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  CREATE TABLE IF NOT EXISTS title_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    requested_title TEXT,
-    requested_upc TEXT,
-    email TEXT,
-    source TEXT NOT NULL DEFAULT 'public_search',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
   CREATE TABLE IF NOT EXISTS buylist_snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     version TEXT NOT NULL UNIQUE,
@@ -892,9 +818,6 @@ const POSTGRES_SCHEMA_SQL = `
     condition_note TEXT,
     price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
     active INTEGER NOT NULL DEFAULT 1,
-    upc TEXT,
-    is_hot INTEGER NOT NULL DEFAULT 0,
-    notes TEXT,
     pricecharting_product_id TEXT,
     market_source TEXT DEFAULT 'pricecharting',
     market_last_checked_at TIMESTAMPTZ,
@@ -949,15 +872,6 @@ const POSTGRES_SCHEMA_SQL = `
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
-  CREATE TABLE IF NOT EXISTS title_requests (
-    id SERIAL PRIMARY KEY,
-    requested_title TEXT,
-    requested_upc TEXT,
-    email TEXT,
-    source TEXT NOT NULL DEFAULT 'public_search',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-
   CREATE TABLE IF NOT EXISTS buylist_snapshots (
     id SERIAL PRIMARY KEY,
     version TEXT NOT NULL UNIQUE,
@@ -996,13 +910,9 @@ async function initDb() {
   await ensureColumn('submission_items', 'platform_at_submit', 'TEXT');
   await ensureColumn('submission_items', 'unit_price_cents_at_submit', 'INTEGER');
   await ensureColumn('submission_items', 'line_total_cents_at_submit', 'INTEGER');
-  await ensureColumn('games', 'upc', 'TEXT');
-  await ensureColumn('games', 'is_hot', 'INTEGER NOT NULL DEFAULT 0');
-  await ensureColumn('games', 'notes', 'TEXT');
 
   await setDefaultSetting('current_buylist_version', currentMonthVersion());
   await setDefaultSetting('show_price_change_highlights_public', 'true');
-  await setDefaultSetting('homepage_paid_out_text', '$25,000+');
   await setDefaultSetting('ship_to_business_name', 'I_BuyGames Buylist');
   await setDefaultSetting('ship_to_contact_name', '');
   await setDefaultSetting('ship_to_address_line1', '');
@@ -1163,10 +1073,9 @@ function getRuntimePayload() {
 }
 
 async function getAdminSettingsPayload() {
-  const [currentBuylistVersionRaw, showHighlightsRaw, homepagePaidOutTextRaw, packingSlipSettings] = await Promise.all([
+  const [currentBuylistVersionRaw, showHighlightsRaw, packingSlipSettings] = await Promise.all([
     getSettingValue('current_buylist_version', currentMonthVersion()),
     getSettingValue('show_price_change_highlights_public', 'true'),
-    getSettingValue('homepage_paid_out_text', '$25,000+'),
     loadPackingSlipSettings(),
   ]);
   const currentBuylistVersion = normalizeBuylistVersion(currentBuylistVersionRaw);
@@ -1178,7 +1087,6 @@ async function getAdminSettingsPayload() {
   return {
     current_buylist_version: currentBuylistVersion,
     show_price_change_highlights_public: showPriceChangeHighlightsPublic,
-    homepage_paid_out_text: safeString(homepagePaidOutTextRaw) || '$25,000+',
     last_published_version: lastPublishedVersion,
     last_published_at: lastPublishedAt,
     comparison_baseline_version: comparisonBaselineVersion,
@@ -1371,7 +1279,6 @@ app.put(
       show_price_change_highlights_public,
       toSettingBoolean(currentShowHighlightsRaw, true)
     );
-    const homepagePaidOutText = safeString(req.body?.homepage_paid_out_text || '$25,000+').slice(0, 80) || '$25,000+';
     const body = req.body || {};
     const hasField = (key) => Object.prototype.hasOwnProperty.call(body, key);
     const packingSlipSettings = normalizePackingSlipSettingsInput({
@@ -1401,7 +1308,6 @@ app.put(
     await Promise.all([
       upsertSettingValue('current_buylist_version', currentBuylistVersion),
       upsertSettingValue('show_price_change_highlights_public', showPriceChangeHighlightsPublic ? 'true' : 'false'),
-      upsertSettingValue('homepage_paid_out_text', homepagePaidOutText),
       upsertSettingValue('ship_to_business_name', packingSlipSettings.ship_to_business_name),
       upsertSettingValue('ship_to_contact_name', packingSlipSettings.ship_to_contact_name),
       upsertSettingValue('ship_to_address_line1', packingSlipSettings.ship_to_address_line1),
@@ -1423,7 +1329,6 @@ app.put(
       settings: {
         current_buylist_version: currentBuylistVersion,
         show_price_change_highlights_public: showPriceChangeHighlightsPublic,
-        homepage_paid_out_text: homepagePaidOutText,
         last_published_version: lastPublishedVersion,
         last_published_at: lastPublishedAt,
         comparison_baseline_version: comparisonBaselineVersion,
@@ -1568,108 +1473,6 @@ app.get(
 );
 
 app.get(
-  '/api/public-site-config',
-  asyncHandler(async (req, res) => {
-    res.set({
-      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-      Pragma: 'no-cache',
-      Expires: '0',
-    });
-    const homepagePaidOutText = safeString(await getSettingValue('homepage_paid_out_text', '$25,000+')) || '$25,000+';
-    res.json({
-      homepagePaidOutText,
-      homepagePaidOutLabel: 'paid out to sellers',
-    });
-  })
-);
-
-app.get(
-  '/api/search/suggest',
-  asyncHandler(async (req, res) => {
-    const q = safeString(req.query.q);
-    const limitRaw = Number(req.query.limit || 10);
-    const limit = Number.isFinite(limitRaw) ? Math.min(10, Math.max(1, Math.floor(limitRaw))) : 10;
-
-    if (q.length < 2) {
-      return res.json([]);
-    }
-
-    const rows = await getGameRows(false);
-    const qLower = q.toLowerCase();
-    const qUpc = normalizeUpc(q);
-
-    const matches = rows
-      .filter((row) => {
-        const title = String(row.title || '').toLowerCase();
-        const upc = normalizeUpc(row.upc);
-        if (qUpc && upc && upc.includes(qUpc)) return true;
-        return title.includes(qLower);
-      })
-      .map((row) => {
-        const title = String(row.title || '').toLowerCase();
-        const upc = normalizeUpc(row.upc);
-        let score = title.startsWith(qLower) ? 300 : title.includes(qLower) ? 200 : 0;
-        let matchType = 'title';
-        if (qUpc && upc) {
-          if (upc === qUpc) {
-            score = 1000;
-            matchType = 'upc';
-          } else if (upc.includes(qUpc)) {
-            score = Math.max(score, 500);
-            matchType = 'upc';
-          }
-        }
-        if (row.is_hot) score += 50;
-        return { row, score, matchType };
-      })
-      .sort((a, b) => b.score - a.score || Number(b.row.is_hot) - Number(a.row.is_hot) || String(a.row.title).localeCompare(String(b.row.title)))
-      .slice(0, limit)
-      .map(({ row, matchType }) => ({
-        id: row.id,
-        title: row.title,
-        platform: row.platform,
-        price: row.price,
-        price_cents: row.price_cents,
-        condition_note: row.condition_note,
-        is_hot: Boolean(row.is_hot),
-        upc: row.upc || null,
-        match_type: matchType,
-      }));
-
-    res.json(matches);
-  })
-);
-
-app.post(
-  '/api/title-requests',
-  asyncHandler(async (req, res) => {
-    const requestedTitle = safeString(req.body?.title).slice(0, 180);
-    const requestedUpc = normalizeUpc(req.body?.upc);
-    const email = safeString(req.body?.email).slice(0, 180);
-    const source = safeString(req.body?.source || 'public_search').slice(0, 80) || 'public_search';
-
-    if (!requestedTitle && !requestedUpc) {
-      return res.status(400).json({ error: 'A title or UPC is required.' });
-    }
-
-    const result = await db.run(
-      usingPostgres
-        ? `INSERT INTO title_requests (requested_title, requested_upc, email, source, created_at)
-           VALUES (?, ?, ?, ?, datetime('now'))
-           RETURNING id`
-        : `INSERT INTO title_requests (requested_title, requested_upc, email, source, created_at)
-           VALUES (?, ?, ?, ?, datetime('now'))`,
-      [requestedTitle || null, requestedUpc || null, email || null, source]
-    );
-
-    res.status(201).json({
-      ok: true,
-      requestId: Number(result.lastInsertRowid || 0),
-    });
-  })
-);
-
-app.get(
   '/api/admin/games',
   requireAdmin,
   asyncHandler(async (req, res) => {
@@ -1795,10 +1598,10 @@ app.post(
     if (resolvedMode === 'replace') {
       await tx.run('DELETE FROM games');
       for (const row of dedupedRows) {
-      await tx.run(
-          `INSERT INTO games (title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-          [row.title, row.platform, row.condition, row.priceCents, row.active, row.upc, row.isHot, row.notes]
+        await tx.run(
+          `INSERT INTO games (title, platform, condition_note, price_cents, active, updated_at)
+           VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+          [row.title, row.platform, row.condition, row.priceCents, row.active]
         );
         inserted += 1;
       }
@@ -1819,17 +1622,17 @@ app.post(
         }
         await tx.run(
           `UPDATE games
-           SET title = ?, platform = ?, condition_note = ?, price_cents = ?, active = ?, upc = ?, is_hot = ?, notes = ?, updated_at = datetime('now')
+           SET title = ?, platform = ?, condition_note = ?, price_cents = ?, active = ?, updated_at = datetime('now')
            WHERE id = ?`,
-          [row.title, row.platform, row.condition, row.priceCents, row.active, row.upc, row.isHot, row.notes, existing.id]
+          [row.title, row.platform, row.condition, row.priceCents, row.active, existing.id]
         );
         updated += 1;
         continue;
       }
       await tx.run(
-        `INSERT INTO games (title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [row.title, row.platform, row.condition, row.priceCents, row.active, row.upc, row.isHot, row.notes]
+        `INSERT INTO games (title, platform, condition_note, price_cents, active, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+        [row.title, row.platform, row.condition, row.priceCents, row.active]
       );
       inserted += 1;
     }
@@ -2391,7 +2194,7 @@ app.post(
   '/api/admin/games',
   requireAdmin,
   asyncHandler(async (req, res) => {
-  const { title, platform, condition, condition_note, conditionNote, price, active, upc, is_hot, notes } = req.body || {};
+  const { title, platform, condition, condition_note, conditionNote, price, active } = req.body || {};
   if (!title || typeof title !== 'string') {
     return res.status(400).json({ error: 'Title is required' });
   }
@@ -2405,26 +2208,17 @@ app.post(
   const info = await db.run(
     usingPostgres
       ? `INSERT INTO games
-          (title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          (title, platform, condition_note, price_cents, active, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
          RETURNING id`
       : `INSERT INTO games
-          (title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-    [
-      title.trim(),
-      normalizePlatform(platform),
-      normalizedCondition,
-      priceCents,
-      active === false ? 0 : 1,
-      normalizeUpc(upc),
-      normalizeHotValue(is_hot) ? 1 : 0,
-      normalizeNotes(notes),
-    ]
+          (title, platform, condition_note, price_cents, active, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+    [title.trim(), normalizePlatform(platform), normalizedCondition, priceCents, active === false ? 0 : 1]
   );
 
   const created = await db.get(
-    `SELECT id, title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at
+    `SELECT id, title, platform, condition_note, price_cents, active, updated_at
      FROM games
      WHERE id = ?`,
     [Number(info.lastInsertRowid)]
@@ -2448,7 +2242,7 @@ app.put(
     return res.status(404).json({ error: 'Game not found' });
   }
 
-  const { title, platform, condition, condition_note, conditionNote, price, active, upc, is_hot, notes } = req.body || {};
+  const { title, platform, condition, condition_note, conditionNote, price, active } = req.body || {};
   if (!title || typeof title !== 'string') {
     return res.status(400).json({ error: 'Title is required' });
   }
@@ -2466,26 +2260,13 @@ app.put(
          condition_note = ?,
          price_cents = ?,
          active = ?,
-         upc = ?,
-         is_hot = ?,
-         notes = ?,
          updated_at = datetime('now')
      WHERE id = ?`,
-    [
-      title.trim(),
-      normalizePlatform(platform),
-      normalizedCondition,
-      priceCents,
-      active ? 1 : 0,
-      normalizeUpc(upc),
-      normalizeHotValue(is_hot) ? 1 : 0,
-      normalizeNotes(notes),
-      id,
-    ]
+    [title.trim(), normalizePlatform(platform), normalizedCondition, priceCents, active ? 1 : 0, id]
   );
 
   const updated = await db.get(
-    `SELECT id, title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at
+    `SELECT id, title, platform, condition_note, price_cents, active, updated_at
      FROM games
      WHERE id = ?`,
     [id]
@@ -2538,9 +2319,9 @@ app.post(
     for (const row of parsed.rows) {
       await tx.run(
         `INSERT INTO games
-          (title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [row.title, row.platform, row.condition, row.priceCents, row.active, row.upc, row.isHot, row.notes]
+          (title, platform, condition_note, price_cents, active, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+        [row.title, row.platform, row.condition, row.priceCents, row.active]
       );
     }
   });
@@ -2555,30 +2336,29 @@ app.get(
   asyncHandler(async (req, res) => {
   const filter = buildGameFilterWhere(req.query || {});
   const rows = await db.all(
-    `SELECT title, platform, condition_note, price_cents, active, upc, is_hot, notes
+    `SELECT title, platform, condition_note, price_cents, active
      FROM games
      ${filter.whereSql}
      ORDER BY title ASC`,
     filter.params
   );
 
-  const csvRows = [['title', 'platform', 'condition', 'price', 'active', 'upc', 'is_hot', 'notes']];
+  const lines = ['title,platform,condition,price,active'];
   for (const r of rows) {
-    csvRows.push([
-      r.title,
-      r.platform || '',
-      normalizeCondition(r.condition_note),
-      (r.price_cents / 100).toFixed(2),
-      r.active ? '1' : '0',
-      normalizeUpc(r.upc) || '',
-      Number(r.is_hot) === 1 || r.is_hot === true ? '1' : '0',
-      normalizeNotes(r.notes),
-    ]);
+    lines.push(
+      [
+        r.title,
+        r.platform || '',
+        normalizeCondition(r.condition_note),
+        (r.price_cents / 100).toFixed(2),
+        r.active ? '1' : '0',
+      ].join(',')
+    );
   }
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="buylist.csv"');
-  res.send(rowsToCsv(csvRows));
+  res.send(`${lines.join('\n')}\n`);
   })
 );
 

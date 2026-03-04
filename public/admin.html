@@ -113,12 +113,6 @@
                 <option value="1">Active</option>
                 <option value="0">Inactive</option>
               </select>
-              <input id="upc" placeholder="UPC (optional)" />
-              <select id="isHot">
-                <option value="0">Standard</option>
-                <option value="1">Hot Item</option>
-              </select>
-              <textarea id="gameNotes" rows="3" placeholder="Notes (optional)"></textarea>
               <button type="submit">Add</button>
             </form>
           </details>
@@ -176,7 +170,7 @@
                 Import CSV
                 <input id="importCsv" type="file" accept=".csv" style="display: none" />
               </label>
-              <span class="muted">CSV header: title,platform,condition,price,active,upc,is_hot,notes</span>
+              <span class="muted">CSV header: title,platform,condition,price,active</span>
             </div>
 
             <div id="bulkToolbar" class="bulk-toolbar is-hidden">
@@ -309,10 +303,6 @@
                 <option value="0">Off (Show normal pricing only)</option>
               </select>
               <p class="muted" style="margin: 0">Controls whether buff/nerf highlights appear on public seller pages.</p>
-
-              <label for="homepagePaidOutText" class="muted" style="margin-top: 0.5rem">Homepage Paid Out Amount</label>
-              <input id="homepagePaidOutText" placeholder="$25,000+" />
-              <p class="muted" style="margin: 0">Shown on the homepage social proof section.</p>
 
               <div id="buylistPublishMeta" class="buylist-publish-meta">
                 <p class="muted" style="margin: 0">
