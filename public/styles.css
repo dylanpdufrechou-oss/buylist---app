@@ -2151,19 +2151,6 @@ body.retro-theme {
   background-size: 24px 24px, 24px 24px, auto, auto, auto;
 }
 
-body.retro-theme.comfort-mode-on {
-  --line: #263249;
-  --line-strong: #32415f;
-  --ink: #e9eef9;
-  --ink-dim: #aeb9cd;
-  --shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
-  background:
-    linear-gradient(transparent 95%, rgba(255, 255, 255, 0.01) 95%),
-    linear-gradient(90deg, transparent 95%, rgba(255, 255, 255, 0.01) 95%),
-    radial-gradient(circle at 20% 10%, rgba(80, 136, 170, 0.08), transparent 36%),
-    linear-gradient(180deg, #10152a 0%, #0c1223 100%);
-}
-
 .retro-theme header,
 .retro-theme .card,
 .retro-theme .hero-panel,
@@ -2296,34 +2283,6 @@ body.retro-theme.comfort-mode-on {
 
 .retro-theme .buylist-table-wrap .sheet-table tbody tr.delta-down td {
   background: rgba(200, 72, 95, 0.12) !important;
-}
-
-.retro-theme.comfort-mode-on .buylist-table-wrap .sheet-table thead th {
-  background: #222f59;
-}
-
-.retro-theme.comfort-mode-on .buylist-table-wrap .sheet-table th,
-.retro-theme.comfort-mode-on .buylist-table-wrap .sheet-table td {
-  border-color: rgba(84, 102, 135, 0.6);
-}
-
-.retro-theme.comfort-mode-on .buylist-table-wrap .sheet-table tbody td {
-  color: #e0e7f5;
-}
-
-.comfort-mode-control {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 140px;
-}
-
-.comfort-mode-control span {
-  color: var(--ink-dim);
-  font-size: 0.76rem;
-}
-
-.comfort-mode-control select {
-  min-height: 34px;
 }
 
 .home-table-toolbar {
@@ -2490,10 +2449,6 @@ body.retro-theme.comfort-mode-on {
   .seller-controls-right {
     width: 100%;
     justify-content: space-between;
-  }
-
-  .comfort-mode-control {
-    width: 100%;
   }
 
   .home-table-toolbar {
