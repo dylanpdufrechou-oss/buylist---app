@@ -51,6 +51,7 @@
           <button type="button" data-admin-tab="buylist" class="admin-tab-btn">Buylist (Games)</button>
           <button type="button" data-admin-tab="submissions" class="admin-tab-btn">Submissions</button>
           <button type="button" data-admin-tab="content" class="admin-tab-btn">Content</button>
+          <button type="button" data-admin-tab="contact" class="admin-tab-btn">Contact</button>
           <button type="button" data-admin-tab="settings" class="admin-tab-btn">Settings</button>
         </nav>
 
@@ -325,6 +326,15 @@
             </div>
           </section>
 
+          <section class="card admin-settings-card">
+            <h2 style="margin-top: 0">Homepage Footer Links</h2>
+            <p class="muted" style="margin-top: 0">Homepage footer links are editable here.</p>
+            <div id="footerLinksEditor" class="grid"></div>
+            <div class="row-actions" style="margin-top: 0.55rem">
+              <button id="addFooterLink" type="button" class="secondary">Add Link</button>
+            </div>
+          </section>
+
           <details class="card admin-advanced-settings">
             <summary>Packing Slip Settings</summary>
             <div class="grid" style="margin-top: 0.65rem">
@@ -350,6 +360,14 @@
               ></textarea>
             </div>
           </details>
+        </section>
+
+        <section id="adminTabContact" class="admin-tab-panel" data-admin-tab-panel="contact">
+          <section class="card">
+            <h2 style="margin-top: 0">Contact Messages</h2>
+            <p class="muted">Inbox from the public contact form.</p>
+            <div id="contactMessagesWrap"></div>
+          </section>
         </section>
       </div>
     </main>

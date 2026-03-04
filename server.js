@@ -325,6 +325,13 @@ const DEFAULT_PACKING_NEXT_STEPS_TEXT = [
   '- We do not process payouts on weekends (business days only).',
 ].join('\n');
 
+const DEFAULT_HOMEPAGE_FOOTER_LINKS = [
+  { label: 'Contact', href: '/contact.html' },
+  { label: 'Privacy Policy', href: '/privacy.html' },
+  { label: 'Terms of Service', href: '/terms.html' },
+];
+const DEFAULT_HOMEPAGE_PAID_OUT_TEXT = '$25,000+';
+
 const PACKING_SLIP_SETTING_LIMITS = {
   ship_to_business_name: 120,
   ship_to_contact_name: 120,
@@ -339,6 +346,39 @@ const PACKING_SLIP_SETTING_LIMITS = {
 
 function sanitizeSettingText(raw, maxLength) {
   return safeString(raw).slice(0, maxLength);
+}
+
+function normalizeHomepageFooterLinks(input) {
+  const rawList = Array.isArray(input) ? input : [];
+  const links = [];
+  for (const item of rawList.slice(0, 6)) {
+    if (!item || typeof item !== 'object') continue;
+    const label = safeString(item.label).slice(0, 40);
+    const href = safeString(item.href).slice(0, 300);
+    if (!label || !href) continue;
+    const hrefLower = href.toLowerCase();
+    const isAllowed =
+      href.startsWith('/') || hrefLower.startsWith('mailto:') || hrefLower.startsWith('https://') || hrefLower.startsWith('http://');
+    if (!isAllowed) continue;
+    links.push({ label, href });
+  }
+  return links.length > 0 ? links : DEFAULT_HOMEPAGE_FOOTER_LINKS;
+}
+
+function parseHomepageFooterLinksSetting(raw) {
+  try {
+    const parsed = JSON.parse(String(raw || ''));
+    return normalizeHomepageFooterLinks(parsed);
+  } catch {
+    return DEFAULT_HOMEPAGE_FOOTER_LINKS;
+  }
+}
+
+function normalizeContactEmail(raw) {
+  const email = safeString(raw).slice(0, 160);
+  if (!email) return '';
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  return valid ? email : '';
 }
 
 function normalizePackingSlipSettingsInput(input = {}) {
@@ -861,6 +901,17 @@ const SQLITE_SCHEMA_SQL = `
     ON market_price_history (buylist_item_id, source, captured_at DESC);
   CREATE INDEX IF NOT EXISTS idx_buylist_snapshot_items_snapshot
     ON buylist_snapshot_items (snapshot_id);
+
+  CREATE TABLE IF NOT EXISTS contact_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    subject TEXT,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'New',
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;
 
 const POSTGRES_SCHEMA_SQL = `
@@ -951,6 +1002,17 @@ const POSTGRES_SCHEMA_SQL = `
     ON market_price_history (buylist_item_id, source, captured_at DESC);
   CREATE INDEX IF NOT EXISTS idx_buylist_snapshot_items_snapshot
     ON buylist_snapshot_items (snapshot_id);
+
+  CREATE TABLE IF NOT EXISTS contact_messages (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    subject TEXT,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'New',
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
 `;
 
 async function initDb() {
@@ -979,6 +1041,8 @@ async function initDb() {
   await setDefaultSetting('ship_to_postal_code', '');
   await setDefaultSetting('ship_to_country', 'USA');
   await setDefaultSetting('packing_next_steps_text', DEFAULT_PACKING_NEXT_STEPS_TEXT);
+  await setDefaultSetting('homepage_footer_links_json', JSON.stringify(DEFAULT_HOMEPAGE_FOOTER_LINKS));
+  await setDefaultSetting('homepage_paid_out_text', DEFAULT_HOMEPAGE_PAID_OUT_TEXT);
 
   await withTransaction(async (tx) => {
     const rows = await tx.all('SELECT id, platform FROM games');
@@ -1130,13 +1194,17 @@ function getRuntimePayload() {
 }
 
 async function getAdminSettingsPayload() {
-  const [currentBuylistVersionRaw, showHighlightsRaw, packingSlipSettings] = await Promise.all([
+  const [currentBuylistVersionRaw, showHighlightsRaw, packingSlipSettings, footerLinksJson, homepagePaidOutText] =
+    await Promise.all([
     getSettingValue('current_buylist_version', currentMonthVersion()),
     getSettingValue('show_price_change_highlights_public', 'true'),
     loadPackingSlipSettings(),
-  ]);
+    getSettingValue('homepage_footer_links_json', JSON.stringify(DEFAULT_HOMEPAGE_FOOTER_LINKS)),
+    getSettingValue('homepage_paid_out_text', DEFAULT_HOMEPAGE_PAID_OUT_TEXT),
+    ]);
   const currentBuylistVersion = normalizeBuylistVersion(currentBuylistVersionRaw);
   const showPriceChangeHighlightsPublic = toSettingBoolean(showHighlightsRaw, true);
+  const homepageFooterLinks = parseHomepageFooterLinksSetting(footerLinksJson);
   const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
   const lastPublishedVersion = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.version : null;
   const lastPublishedAt = snapshotMeta.lastPublished ? snapshotMeta.lastPublished.published_at : null;
@@ -1156,6 +1224,8 @@ async function getAdminSettingsPayload() {
     ship_to_postal_code: packingSlipSettings.ship_to_postal_code,
     ship_to_country: packingSlipSettings.ship_to_country,
     packing_next_steps_text: packingSlipSettings.packing_next_steps_text,
+    homepage_footer_links: homepageFooterLinks,
+    homepage_paid_out_text: safeString(homepagePaidOutText) || DEFAULT_HOMEPAGE_PAID_OUT_TEXT,
   };
 }
 
@@ -1328,9 +1398,11 @@ app.put(
   asyncHandler(async (req, res) => {
     const { current_buylist_version, show_price_change_highlights_public } = req.body || {};
     const currentBuylistVersion = normalizeBuylistVersion(current_buylist_version);
-    const [currentShowHighlightsRaw, existingPackingSlipSettings] = await Promise.all([
+    const [currentShowHighlightsRaw, existingPackingSlipSettings, existingFooterLinksJson, existingPaidOutText] = await Promise.all([
       getSettingValue('show_price_change_highlights_public', 'true'),
       loadPackingSlipSettings(),
+      getSettingValue('homepage_footer_links_json', JSON.stringify(DEFAULT_HOMEPAGE_FOOTER_LINKS)),
+      getSettingValue('homepage_paid_out_text', DEFAULT_HOMEPAGE_PAID_OUT_TEXT),
     ]);
     const showPriceChangeHighlightsPublic = toSettingBoolean(
       show_price_change_highlights_public,
@@ -1338,6 +1410,12 @@ app.put(
     );
     const body = req.body || {};
     const hasField = (key) => Object.prototype.hasOwnProperty.call(body, key);
+    const homepageFooterLinks = hasField('homepage_footer_links')
+      ? normalizeHomepageFooterLinks(body.homepage_footer_links)
+      : parseHomepageFooterLinksSetting(existingFooterLinksJson);
+    const homepagePaidOutText = hasField('homepage_paid_out_text')
+      ? safeString(body.homepage_paid_out_text).slice(0, 80) || DEFAULT_HOMEPAGE_PAID_OUT_TEXT
+      : safeString(existingPaidOutText) || DEFAULT_HOMEPAGE_PAID_OUT_TEXT;
     const packingSlipSettings = normalizePackingSlipSettingsInput({
       ship_to_business_name: hasField('ship_to_business_name')
         ? body.ship_to_business_name
@@ -1374,6 +1452,8 @@ app.put(
       upsertSettingValue('ship_to_postal_code', packingSlipSettings.ship_to_postal_code),
       upsertSettingValue('ship_to_country', packingSlipSettings.ship_to_country),
       upsertSettingValue('packing_next_steps_text', packingSlipSettings.packing_next_steps_text),
+      upsertSettingValue('homepage_footer_links_json', JSON.stringify(homepageFooterLinks)),
+      upsertSettingValue('homepage_paid_out_text', homepagePaidOutText),
     ]);
 
     const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
@@ -1398,8 +1478,88 @@ app.put(
         ship_to_postal_code: packingSlipSettings.ship_to_postal_code,
         ship_to_country: packingSlipSettings.ship_to_country,
         packing_next_steps_text: packingSlipSettings.packing_next_steps_text,
+        homepage_footer_links: homepageFooterLinks,
+        homepage_paid_out_text: homepagePaidOutText,
       },
     });
+  })
+);
+
+app.get(
+  '/api/public-site-config',
+  asyncHandler(async (req, res) => {
+    const [footerLinksJson, homepagePaidOutText] = await Promise.all([
+      getSettingValue('homepage_footer_links_json', JSON.stringify(DEFAULT_HOMEPAGE_FOOTER_LINKS)),
+      getSettingValue('homepage_paid_out_text', DEFAULT_HOMEPAGE_PAID_OUT_TEXT),
+    ]);
+    res.json({
+      homepageFooterLinks: parseHomepageFooterLinksSetting(footerLinksJson),
+      homepagePaidOutText: safeString(homepagePaidOutText) || DEFAULT_HOMEPAGE_PAID_OUT_TEXT,
+    });
+  })
+);
+
+app.post(
+  '/api/contact',
+  asyncHandler(async (req, res) => {
+    const raw = req.body || {};
+    const name = safeString(raw.name).slice(0, 120);
+    const email = normalizeContactEmail(raw.email);
+    const subject = safeString(raw.subject).slice(0, 160);
+    const message = safeString(raw.message).slice(0, 4000);
+    if (!name) return res.status(400).json({ error: 'Name is required.' });
+    if (!email) return res.status(400).json({ error: 'Valid email is required.' });
+    if (message.length < 10) return res.status(400).json({ error: 'Message must be at least 10 characters.' });
+
+    const insertSql = usingPostgres
+      ? `INSERT INTO contact_messages (name, email, subject, message, status, notes, created_at)
+         VALUES (?, ?, ?, ?, 'New', '', datetime('now'))
+         RETURNING id`
+      : `INSERT INTO contact_messages (name, email, subject, message, status, notes, created_at)
+         VALUES (?, ?, ?, ?, 'New', '', datetime('now'))`;
+    const result = await db.run(insertSql, [name, email, subject, message]);
+    res.status(201).json({
+      ok: true,
+      id: Number(result.lastInsertRowid || 0),
+    });
+  })
+);
+
+app.get(
+  '/api/admin/contact-messages',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const rows = await db.all(
+      `SELECT id, name, email, subject, message, status, notes, created_at
+       FROM contact_messages
+       ORDER BY created_at DESC, id DESC
+       LIMIT 500`
+    );
+    res.json(rows.map((row) => ({
+      id: Number(row.id),
+      name: String(row.name || ''),
+      email: String(row.email || ''),
+      subject: String(row.subject || ''),
+      message: String(row.message || ''),
+      status: String(row.status || 'New'),
+      notes: String(row.notes || ''),
+      created_at: row.created_at,
+    })));
+  })
+);
+
+app.delete(
+  '/api/admin/contact-messages/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid message ID.' });
+    }
+    const existing = await db.get('SELECT id FROM contact_messages WHERE id = ?', [id]);
+    if (!existing) return res.status(404).json({ error: 'Message not found.' });
+    await db.run('DELETE FROM contact_messages WHERE id = ?', [id]);
+    res.json({ ok: true });
   })
 );
 

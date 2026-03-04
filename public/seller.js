@@ -16,6 +16,7 @@ const shipmentPreview = document.getElementById('shipmentPreview');
 const selectedItemsWrap = document.getElementById('selectedItemsWrap');
 const tableMeta = document.getElementById('tableMeta');
 const faqListWrap = document.getElementById('faqList');
+const homeFooterLinksWrap = document.getElementById('homeFooterLinks');
 const stepProgress = document.getElementById('stepProgress');
 const shipmentJumpLinks = document.querySelectorAll('[data-shipment-jump]');
 const conditionStandardsDetails = document.getElementById('conditionStandardsDetails');
@@ -39,6 +40,11 @@ const SELLER_ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
 const SELLER_ROWS_PER_PAGE_DEFAULT = 25;
 const SELLER_ROWS_PER_PAGE_STORAGE_KEY = 'sellerRowsPerPage';
 const isSellerPageView = /\/seller(\.html)?$/i.test(window.location.pathname || '');
+const DEFAULT_HOMEPAGE_FOOTER_LINKS = [
+  { label: 'Contact', href: '/contact.html' },
+  { label: 'Privacy Policy', href: '/privacy.html' },
+  { label: 'Terms of Service', href: '/terms.html' },
+];
 
 let games = [];
 const qtyMap = new Map();
@@ -78,6 +84,39 @@ function escapeHtml(str) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function normalizeFooterLinks(list) {
+  if (!Array.isArray(list)) return DEFAULT_HOMEPAGE_FOOTER_LINKS;
+  const links = [];
+  for (const item of list.slice(0, 6)) {
+    if (!item || typeof item !== 'object') continue;
+    const label = String(item.label || '').trim().slice(0, 40);
+    const href = String(item.href || '').trim().slice(0, 300);
+    if (!label || !href) continue;
+    links.push({ label, href });
+  }
+  return links.length > 0 ? links : DEFAULT_HOMEPAGE_FOOTER_LINKS;
+}
+
+function renderHomeFooterLinks(links) {
+  if (!homeFooterLinksWrap) return;
+  const safeLinks = normalizeFooterLinks(links);
+  homeFooterLinksWrap.innerHTML = safeLinks
+    .map((item) => `<a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a>`)
+    .join('');
+}
+
+async function loadPublicSiteConfig() {
+  if (!homeFooterLinksWrap) return;
+  try {
+    const res = await fetch(`/api/public-site-config?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('config fetch failed');
+    const body = await res.json();
+    renderHomeFooterLinks(body.homepageFooterLinks);
+  } catch {
+    renderHomeFooterLinks(DEFAULT_HOMEPAGE_FOOTER_LINKS);
+  }
 }
 
 function asMoney(price) {
@@ -1159,6 +1198,7 @@ loadGames()
 loadFaqs().catch(() => {
   if (faqListWrap) faqListWrap.innerHTML = '<p class="muted">Could not load FAQs right now.</p>';
 });
+loadPublicSiteConfig();
 
 window.addEventListener('storage', (e) => {
   if (e.key === BUYLIST_UPDATED_EVENT) {

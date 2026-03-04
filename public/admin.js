@@ -24,6 +24,7 @@ const dashCurrentVersion = document.getElementById('dashCurrentVersion');
 const dashGoSubmissionsBtn = document.getElementById('dashGoSubmissions');
 const dashGoBuylistBtn = document.getElementById('dashGoBuylist');
 const dashGoContentBtn = document.getElementById('dashGoContent');
+const dashGoContactBtn = document.getElementById('dashGoContact');
 
 const currentBuylistVersionInput = document.getElementById('currentBuylistVersion');
 const showPriceChangeHighlightsInput = document.getElementById('showPriceChangeHighlights');
@@ -36,6 +37,8 @@ const shipToStateInput = document.getElementById('shipToState');
 const shipToPostalCodeInput = document.getElementById('shipToPostalCode');
 const shipToCountryInput = document.getElementById('shipToCountry');
 const packingNextStepsTextInput = document.getElementById('packingNextStepsText');
+const footerLinksEditor = document.getElementById('footerLinksEditor');
+const addFooterLinkBtn = document.getElementById('addFooterLink');
 const saveBuylistVersionBtn = document.getElementById('saveBuylistVersion');
 const publishBuylistSnapshotBtn = document.getElementById('publishBuylistSnapshot');
 const lastPublishedVersionEl = document.getElementById('lastPublishedVersion');
@@ -101,6 +104,7 @@ const cancelImportBtn = document.getElementById('cancelImport');
 
 const addFaqForm = document.getElementById('addFaqForm');
 const faqWrap = document.getElementById('faqWrap');
+const contactMessagesWrap = document.getElementById('contactMessagesWrap');
 
 const submissionsStatusFilterInput = document.getElementById('submissionsStatusFilter');
 const submissionsSearchInput = document.getElementById('submissionsSearch');
@@ -144,7 +148,7 @@ const BUYLIST_SNAPSHOT_EVENT = 'buylistSnapshot';
 const ADMIN_ACTIVE_TAB_KEY = 'adminActiveTab';
 const ADMIN_DENSITY_MODE_KEY = 'adminDensityMode';
 const ADMIN_DENSITY_MODES = ['compact', 'comfortable'];
-const ADMIN_TABS = ['dashboard', 'buylist', 'submissions', 'content', 'settings'];
+const ADMIN_TABS = ['dashboard', 'buylist', 'submissions', 'content', 'contact', 'settings'];
 const LAST_PLATFORM_KEY = 'adminLastPlatform';
 const LAST_CONDITION_KEY = 'adminLastCondition';
 const EPHEMERAL_SNAPSHOT_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
@@ -215,7 +219,10 @@ let adminSettings = {
   last_published_version: null,
   last_published_at: null,
   comparison_baseline_version: null,
+  homepage_footer_links: [],
+  homepage_paid_out_text: '',
 };
+let contactMessages = [];
 
 function escapeHtml(str) {
   return String(str || '')
@@ -281,6 +288,25 @@ function showToast(text, type = 'ok') {
 
 function money(price) {
   return `$${Number(price).toFixed(2)}`;
+}
+
+const DEFAULT_HOMEPAGE_FOOTER_LINKS = [
+  { label: 'Contact', href: '/contact.html' },
+  { label: 'Privacy Policy', href: '/privacy.html' },
+  { label: 'Terms of Service', href: '/terms.html' },
+];
+
+function normalizeFooterLinks(list) {
+  if (!Array.isArray(list)) return DEFAULT_HOMEPAGE_FOOTER_LINKS.map((item) => ({ ...item }));
+  const next = [];
+  for (const entry of list.slice(0, 6)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const label = String(entry.label || '').trim().slice(0, 40);
+    const href = String(entry.href || '').trim().slice(0, 300);
+    if (!label || !href) continue;
+    next.push({ label, href });
+  }
+  return next.length > 0 ? next : DEFAULT_HOMEPAGE_FOOTER_LINKS.map((item) => ({ ...item }));
 }
 
 function formatDateTime(value) {
@@ -364,6 +390,56 @@ function setAdminDensityMode(mode, { persist = true } = {}) {
   if (persist) saveAdminDensityPreference(normalized);
 }
 
+function renderFooterLinksEditor(workingLinks = null) {
+  if (!footerLinksEditor) return;
+  const links = normalizeFooterLinks(workingLinks || adminSettings.homepage_footer_links);
+  footerLinksEditor.innerHTML = links
+    .map(
+      (link, index) => `
+      <div class="grid two admin-footer-link-row" data-footer-link-row="${index}">
+        <input data-footer-link-field="label" data-footer-link-index="${index}" placeholder="Label" value="${escapeHtml(link.label)}" />
+        <div class="row-actions">
+          <input data-footer-link-field="href" data-footer-link-index="${index}" placeholder="/path or https://..." value="${escapeHtml(link.href)}" />
+          <button type="button" class="danger small" data-footer-link-remove="${index}">Remove</button>
+        </div>
+      </div>
+    `
+    )
+    .join('');
+
+  footerLinksEditor.querySelectorAll('input[data-footer-link-field]').forEach((input) => {
+    input.addEventListener('input', () => updateTopActionBar());
+  });
+  footerLinksEditor.querySelectorAll('button[data-footer-link-remove]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-footer-link-remove'));
+      const next = normalizeFooterLinks(collectFooterLinksFromEditor()).filter((_, i) => i !== idx);
+      renderFooterLinksEditor(next.length ? next : [{ label: '', href: '' }]);
+      updateTopActionBar();
+    });
+  });
+}
+
+function collectFooterLinksFromEditor() {
+  if (!footerLinksEditor) return normalizeFooterLinks(adminSettings.homepage_footer_links);
+  const links = [];
+  footerLinksEditor.querySelectorAll('[data-footer-link-row]').forEach((row) => {
+    const labelInput = row.querySelector('input[data-footer-link-field="label"]');
+    const hrefInput = row.querySelector('input[data-footer-link-field="href"]');
+    const label = String(labelInput?.value || '').trim();
+    const href = String(hrefInput?.value || '').trim();
+    if (!label && !href) return;
+    links.push({ label, href });
+  });
+  return normalizeFooterLinks(links);
+}
+
+function footerLinksDirty() {
+  const current = normalizeFooterLinks(collectFooterLinksFromEditor());
+  const baseline = normalizeFooterLinks(adminSettings.homepage_footer_links);
+  return JSON.stringify(current) !== JSON.stringify(baseline);
+}
+
 function getSettingsDirtyCount() {
   if (!currentBuylistVersionInput || !showPriceChangeHighlightsInput) return 0;
   const currentVersion = String(currentBuylistVersionInput.value || '').trim();
@@ -372,6 +448,8 @@ function getSettingsDirtyCount() {
     currentVersion !== String(adminSettings.current_buylist_version || '') ||
     currentHighlight !== Boolean(adminSettings.show_price_change_highlights_public);
   if (settingsChanged) return 1;
+
+  if (footerLinksDirty()) return 1;
 
   const optionalPairs = [
     [shipToBusinessNameInput, adminSettings.ship_to_business_name],
@@ -470,7 +548,7 @@ function updateTopActionBar() {
   const hasSaveAction = tab === 'buylist' || tab === 'content' || tab === 'settings';
   const showPublish = tab === 'buylist' || tab === 'settings';
   const showBuylistTools = tab === 'buylist';
-  const showRefresh = tab === 'buylist' || tab === 'submissions';
+  const showRefresh = tab === 'buylist' || tab === 'submissions' || tab === 'contact';
 
   setElementVisibility(topSaveChangesBtn, hasSaveAction);
   if (topSaveChangesBtn) {
@@ -501,6 +579,11 @@ function setActiveAdminTab(tab, { persist = true } = {}) {
     const panelTab = safeAdminTab(panel.getAttribute('data-admin-tab-panel'));
     panel.classList.toggle('is-active', panelTab === next);
   });
+  if (next === 'contact') {
+    loadContactMessages().catch((err) => {
+      renderNotice(err.message || 'Could not load contact messages.', 'error');
+    });
+  }
   updateTopActionBar();
 }
 
@@ -1596,6 +1679,7 @@ function hideImportPreview() {
 function applyAdminSettingsData(settings, fallback = {}) {
   const source = assertObjectPayload(settings, 'settings', 'Invalid settings payload.');
   const nextCurrentVersion = source.current_buylist_version || '';
+  const resolvedFooterLinks = normalizeFooterLinks(source.homepage_footer_links || fallback.homepage_footer_links);
   adminSettings = {
     current_buylist_version: nextCurrentVersion,
     show_price_change_highlights_public: source.show_price_change_highlights_public !== false,
@@ -1611,6 +1695,8 @@ function applyAdminSettingsData(settings, fallback = {}) {
     last_published_version: source.last_published_version || null,
     last_published_at: source.last_published_at || null,
     comparison_baseline_version: source.comparison_baseline_version || null,
+    homepage_footer_links: resolvedFooterLinks,
+    homepage_paid_out_text: source.homepage_paid_out_text || fallback.homepage_paid_out_text || '',
   };
   currentBuylistVersionInput.value = nextCurrentVersion;
   if (shipToBusinessNameInput) shipToBusinessNameInput.value = adminSettings.ship_to_business_name;
@@ -1622,6 +1708,7 @@ function applyAdminSettingsData(settings, fallback = {}) {
   if (shipToPostalCodeInput) shipToPostalCodeInput.value = adminSettings.ship_to_postal_code;
   if (shipToCountryInput) shipToCountryInput.value = adminSettings.ship_to_country;
   if (packingNextStepsTextInput) packingNextStepsTextInput.value = adminSettings.packing_next_steps_text;
+  renderFooterLinksEditor();
   renderPublishMeta();
 }
 
@@ -1635,6 +1722,7 @@ async function loadAdminSettings(options = {}) {
 }
 
 async function saveAdminSettings() {
+  const homepageFooterLinks = collectFooterLinksFromEditor();
   const payload = {
     current_buylist_version: currentBuylistVersionInput.value.trim(),
     show_price_change_highlights_public: showPriceChangeHighlightsInput
@@ -1649,6 +1737,8 @@ async function saveAdminSettings() {
     ship_to_postal_code: shipToPostalCodeInput ? shipToPostalCodeInput.value : '',
     ship_to_country: shipToCountryInput ? shipToCountryInput.value : '',
     packing_next_steps_text: packingNextStepsTextInput ? packingNextStepsTextInput.value : '',
+    homepage_footer_links: homepageFooterLinks,
+    homepage_paid_out_text: adminSettings.homepage_paid_out_text || '',
   };
 
   const res = await adminFetch('/api/admin/settings', {
@@ -2196,6 +2286,73 @@ async function loadFaqs() {
   updateTopActionBar();
 }
 
+function renderContactMessagesTable() {
+  if (!contactMessagesWrap) return;
+  if (!Array.isArray(contactMessages) || contactMessages.length === 0) {
+    contactMessagesWrap.innerHTML = '<p class="muted">No contact messages yet.</p>';
+    return;
+  }
+  contactMessagesWrap.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Subject</th>
+          <th>Message</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${contactMessages
+          .map(
+            (row) => `
+          <tr>
+            <td>${escapeHtml(formatDateTime(row.created_at || ''))}</td>
+            <td>${escapeHtml(row.name || '-')}</td>
+            <td>${escapeHtml(row.email || '-')}</td>
+            <td>${escapeHtml(row.subject || '-')}</td>
+            <td>${escapeHtml(String(row.message || '').slice(0, 220))}</td>
+            <td class="row-actions">
+              <button class="danger small" data-contact-delete="${Number(row.id)}">Delete</button>
+            </td>
+          </tr>
+        `
+          )
+          .join('')}
+      </tbody>
+    </table>
+  `;
+  contactMessagesWrap.querySelectorAll('button[data-contact-delete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.getAttribute('data-contact-delete'));
+      if (!Number.isInteger(id) || id <= 0) return;
+      if (!confirm(`Delete contact message #${id}?`)) return;
+      try {
+        const res = await adminFetch(`/api/admin/contact-messages/${id}`, { method: 'DELETE' });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Could not delete contact message.');
+        await loadContactMessages();
+        renderNotice('Contact message deleted.', 'warn');
+      } catch (error) {
+        renderNotice(error.message || 'Could not delete contact message.', 'error');
+      }
+    });
+  });
+}
+
+async function loadContactMessages() {
+  if (!contactMessagesWrap) return;
+  const payload = await requestAdminJson('/api/admin/contact-messages', {
+    source: 'contact-messages',
+    timeoutMs: 12000,
+    retries: 1,
+  });
+  contactMessages = assertArrayPayload(payload, 'contact-messages', 'Invalid contact messages payload.');
+  renderContactMessagesTable();
+}
+
 function gameFilterQueryString() {
   readGameFiltersFromInputs();
   const params = new URLSearchParams();
@@ -2307,6 +2464,7 @@ async function reloadAdminData() {
       ['games', () => loadGames()],
       ['submissions', () => loadSubmissions(submissionsState.page || 1)],
       ['faqs', () => loadFaqs()],
+      ['contact-messages', () => loadContactMessages()],
     ];
     const results = await Promise.allSettled(sectionLoaders.map(([, fn]) => fn()));
     const failed = [];
@@ -2378,6 +2536,9 @@ if (dashGoBuylistBtn) {
 }
 if (dashGoContentBtn) {
   dashGoContentBtn.addEventListener('click', () => setActiveAdminTab('content'));
+}
+if (dashGoContactBtn) {
+  dashGoContactBtn.addEventListener('click', () => setActiveAdminTab('contact'));
 }
 
 if (densityCompactBtn) {
@@ -2465,6 +2626,9 @@ if (topRefreshBtn) {
         await loadSubmissions(submissionsState.page || 1);
         await loadDashboardMetrics({ retries: 1 });
         renderNotice('Submissions refreshed.');
+      } else if (activeAdminTab === 'contact') {
+        await loadContactMessages();
+        renderNotice('Contact messages refreshed.');
       } else {
         if (getDirtyCount() > 0 && !confirm('You have unsaved changes. Refresh and discard them?')) return;
         await reloadAdminData();
@@ -2472,6 +2636,18 @@ if (topRefreshBtn) {
     } catch (err) {
       renderNotice(formatLoadError(err, 'Could not refresh.'), 'error');
     }
+  });
+}
+
+if (addFooterLinkBtn) {
+  addFooterLinkBtn.addEventListener('click', () => {
+    const current = normalizeFooterLinks(collectFooterLinksFromEditor());
+    if (current.length >= 6) {
+      renderNotice('You can add up to 6 footer links.', 'warn');
+      return;
+    }
+    renderFooterLinksEditor([...current, { label: '', href: '' }]);
+    updateTopActionBar();
   });
 }
 
