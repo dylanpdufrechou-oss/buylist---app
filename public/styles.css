@@ -2154,6 +2154,41 @@ a {
   text-decoration: underline;
 }
 
+.home-footer .footer-inner {
+  width: min(1100px, 92vw);
+  padding: 0.95rem 0 1.15rem;
+  display: grid;
+  justify-items: center;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.home-footer .footer-logo-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.home-footer .footer-logo {
+  display: block;
+  width: clamp(140px, 18vw, 220px);
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 6px rgba(10, 18, 44, 0.45));
+}
+
+.home-footer .footer-links {
+  justify-content: center;
+  width: auto;
+  gap: 1rem;
+}
+
+.home-footer .footer-links a {
+  font-size: 0.95rem;
+}
+
 /* Public seller-facing calm visual pass (kept out of admin via .retro-theme scope) */
 body.retro-theme {
   --ink: #e8edf7;
@@ -2546,6 +2581,22 @@ body.retro-theme {
   .footer-links {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .home-footer .footer-inner {
+    justify-items: center;
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  .home-footer .footer-logo {
+    width: clamp(132px, 42vw, 188px);
+  }
+
+  .home-footer .footer-links {
+    width: 100%;
+    justify-content: center;
+    gap: 0.8rem;
   }
 
   .admin-modal {
