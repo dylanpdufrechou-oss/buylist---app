@@ -21,6 +21,19 @@ const stepProgress = document.getElementById('stepProgress');
 const shipmentJumpLinks = document.querySelectorAll('[data-shipment-jump]');
 const conditionStandardsDetails = document.getElementById('conditionStandardsDetails');
 const conditionStandardsAction = document.querySelector('.policy-summary-action');
+const workspaceTabsWrap = document.getElementById('sellerWorkspaceTabs');
+const workspaceTabButtons = Array.from(document.querySelectorAll('[data-workspace-tab]'));
+const workspacePanels = Array.from(document.querySelectorAll('[data-workspace-panel]'));
+const batchesSection = document.getElementById('batchesSection');
+const currentBatchSummary = document.getElementById('currentBatchSummary');
+const recentBatchesWrap = document.getElementById('recentBatchesWrap');
+const batchLookupForm = document.getElementById('batchLookupForm');
+const batchLookupSubmissionIdInput = document.getElementById('batchLookupSubmissionId');
+const batchLookupEmailInput = document.getElementById('batchLookupEmail');
+const batchLookupSubmitBtn = document.getElementById('batchLookupSubmit');
+const batchLookupClearBtn = document.getElementById('batchLookupClear');
+const batchLookupMessage = document.getElementById('batchLookupMessage');
+const batchLookupResult = document.getElementById('batchLookupResult');
 
 const BUYLIST_UPDATED_EVENT = 'buylistUpdatedAt';
 const BUYLIST_SNAPSHOT_EVENT = 'buylistSnapshot';
@@ -39,6 +52,9 @@ const PACKING_SLIP_PATH = '/packing-slip.html';
 const SELLER_ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
 const SELLER_ROWS_PER_PAGE_DEFAULT = 25;
 const SELLER_ROWS_PER_PAGE_STORAGE_KEY = 'sellerRowsPerPage';
+const SELLER_ACTIVE_TAB_STORAGE_KEY = 'sellerActiveTab';
+const SELLER_RECENT_BATCHES_STORAGE_KEY = 'sellerRecentBatches';
+const SELLER_BATCHES_MAX = 20;
 const isSellerPageView = /\/seller(\.html)?$/i.test(window.location.pathname || '');
 const DEFAULT_HOMEPAGE_FOOTER_LINKS = [
   { label: 'Contact', href: '/contact.html' },
@@ -76,6 +92,8 @@ let sellerTableState = {
   page: 1,
   pageSize: loadSellerRowsPerPagePreference(),
 };
+let sellerWorkspaceTab = loadWorkspaceTabPreference();
+let recentBatches = loadRecentBatches();
 
 function escapeHtml(str) {
   return String(str || '')
@@ -140,6 +158,72 @@ function loadSellerRowsPerPagePreference() {
 function saveSellerRowsPerPagePreference(pageSize) {
   try {
     localStorage.setItem(SELLER_ROWS_PER_PAGE_STORAGE_KEY, String(normalizeSellerRowsPerPage(pageSize)));
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
+function normalizeWorkspaceTab(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'buylist' || value === 'shipment' || value === 'batches') return value;
+  return 'buylist';
+}
+
+function loadWorkspaceTabPreference() {
+  try {
+    return normalizeWorkspaceTab(localStorage.getItem(SELLER_ACTIVE_TAB_STORAGE_KEY));
+  } catch {
+    return 'buylist';
+  }
+}
+
+function saveWorkspaceTabPreference(tab) {
+  try {
+    localStorage.setItem(SELLER_ACTIVE_TAB_STORAGE_KEY, normalizeWorkspaceTab(tab));
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
+function normalizeRecentBatchItem(item) {
+  const submissionId = Number(item?.submissionId || item?.id);
+  if (!Number.isInteger(submissionId) || submissionId <= 0) return null;
+  const shipmentId = String(item?.shipmentId || `SHIP-${String(submissionId).padStart(6, '0')}`).trim();
+  const email = String(item?.email || '').trim();
+  const createdAt = String(item?.createdAt || item?.created_at || '').trim() || new Date().toISOString();
+  const status = String(item?.status || 'Pending').trim() || 'Pending';
+  const estimatedTotal = Number(item?.estimatedTotal || item?.estimated_total || item?.total || 0);
+  const totalQty = Number(item?.totalQty || item?.total_qty || 0);
+  return {
+    submissionId,
+    shipmentId,
+    email,
+    createdAt,
+    status,
+    estimatedTotal: Number.isFinite(estimatedTotal) ? estimatedTotal : 0,
+    totalQty: Number.isFinite(totalQty) ? totalQty : 0,
+  };
+}
+
+function loadRecentBatches() {
+  try {
+    const raw = localStorage.getItem(SELLER_RECENT_BATCHES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => normalizeRecentBatchItem(item))
+      .filter(Boolean)
+      .slice(0, SELLER_BATCHES_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentBatches(list) {
+  recentBatches = Array.isArray(list) ? list.slice(0, SELLER_BATCHES_MAX) : [];
+  try {
+    localStorage.setItem(SELLER_RECENT_BATCHES_STORAGE_KEY, JSON.stringify(recentBatches));
   } catch {
     // Ignore localStorage failures.
   }
@@ -545,6 +629,253 @@ function renderShipment(shipment, seller) {
   }
 }
 
+function setWorkspaceTab(tab, { persist = true } = {}) {
+  const next = normalizeWorkspaceTab(tab);
+  sellerWorkspaceTab = next;
+  if (persist) saveWorkspaceTabPreference(next);
+  workspaceTabButtons.forEach((btn) => {
+    btn.classList.toggle('is-active', String(btn.getAttribute('data-workspace-tab') || '') === next);
+  });
+  workspacePanels.forEach((panel) => {
+    panel.classList.toggle('is-hidden', String(panel.getAttribute('data-workspace-panel') || '') !== next);
+  });
+  updateShipmentVisibility(getSelectionSummary().total);
+  if (next === 'buylist') {
+    syncTableViewportHeight();
+  }
+}
+
+function renderBatchLookupMessage(text, type = 'ok') {
+  if (!batchLookupMessage) return;
+  if (!text) {
+    batchLookupMessage.innerHTML = '';
+    return;
+  }
+  batchLookupMessage.innerHTML = `<div class="notice ${type}">${escapeHtml(text)}</div>`;
+}
+
+function toLookupShipment(lookup) {
+  const submissionId = Number(lookup?.id || 0);
+  const shipmentId = String(lookup?.shipmentId || `SHIP-${String(submissionId).padStart(6, '0')}`).trim();
+  const createdAt = String(lookup?.createdAt || '').trim() || new Date().toISOString();
+  const items = Array.isArray(lookup?.items)
+    ? lookup.items.map((item) => ({
+        title: String(item?.title || '').trim() || 'Untitled Game',
+        platform: String(item?.platform || '').trim(),
+        quantity: Math.max(0, Number(item?.qty || 0)),
+        price: Number(item?.unitPriceAtSubmit || 0).toFixed(2),
+        lineTotal: Number(item?.lineTotalAtSubmit || 0).toFixed(2),
+      }))
+    : [];
+  const estimatedTotal = Number(lookup?.estimatedTotal || 0);
+  return {
+    id: shipmentId,
+    submissionId,
+    createdAt,
+    status: String(lookup?.status || 'Pending'),
+    priceVersion: String(lookup?.priceVersion || ''),
+    total: estimatedTotal.toFixed(2),
+    items,
+  };
+}
+
+function renderBatchLookupResult(lookup) {
+  if (!batchLookupResult) return;
+  if (!lookup) {
+    batchLookupResult.innerHTML = '';
+    return;
+  }
+
+  const shipment = toLookupShipment(lookup);
+  const seller = {
+    customerName: String(lookup?.sellerName || '').trim() || '-',
+    email: String(lookup?.email || '').trim() || '-',
+    phone: '',
+  };
+
+  batchLookupResult.innerHTML = `
+    <article class="card batch-detail-card">
+      <div class="row-actions">
+        <h4 style="margin:0">Batch ${escapeHtml(shipment.id)}</h4>
+        <span class="submission-status ${String(lookup?.status || '').toLowerCase()}">${escapeHtml(lookup.status || 'Pending')}</span>
+      </div>
+      <p class="muted" style="margin:0.2rem 0 0.5rem">Submission #${Number(lookup.id)} • ${escapeHtml(
+    new Date(shipment.createdAt).toLocaleString()
+  )}</p>
+      <p style="margin:0 0 0.55rem"><strong>Total Qty:</strong> ${Number(lookup.totalQty || 0)} • <strong>Total:</strong> ${asMoney(
+    Number(lookup.estimatedTotal || 0)
+  )}</p>
+      <div class="row-actions">
+        <button type="button" class="secondary small" data-batch-action="print">Print Packing Slip</button>
+        <button type="button" class="secondary small" data-batch-action="copy">Copy Submission ID</button>
+      </div>
+      <details style="margin-top:0.6rem">
+        <summary>View items (${shipment.items.length})</summary>
+        <div class="batch-items-table-wrap">
+          <table class="sheet-table">
+            <thead>
+              <tr><th>Title</th><th>Platform</th><th>Qty</th><th>Unit</th><th>Line</th></tr>
+            </thead>
+            <tbody>
+              ${shipment.items
+                .map(
+                  (item) => `
+                <tr>
+                  <td>${escapeHtml(item.title)}</td>
+                  <td>${escapeHtml(item.platform || '-')}</td>
+                  <td>${Number(item.quantity || 0)}</td>
+                  <td>${asMoney(Number(item.price || 0))}</td>
+                  <td>${asMoney(Number(item.lineTotal || 0))}</td>
+                </tr>`
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </article>
+  `;
+
+  batchLookupResult.querySelector('[data-batch-action="print"]')?.addEventListener('click', () => {
+    printPackingSlip(shipment, seller);
+  });
+  batchLookupResult.querySelector('[data-batch-action="copy"]')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(String(lookup.id));
+      renderBatchLookupMessage('Submission ID copied.');
+    } catch {
+      renderBatchLookupMessage('Could not copy Submission ID.', 'error');
+    }
+  });
+}
+
+function renderCurrentBatchSummary() {
+  if (!currentBatchSummary) return;
+  const summary = getSelectionSummary();
+  if (!summary.rows.length) {
+    currentBatchSummary.innerHTML = 'No games added yet.';
+    return;
+  }
+  currentBatchSummary.innerHTML = `
+    <p style="margin:0"><strong>${summary.rows.length}</strong> title${summary.rows.length === 1 ? '' : 's'} selected</p>
+    <p style="margin:0.2rem 0 0"><strong>Total Qty:</strong> ${summary.rows.reduce((sum, row) => sum + Number(row.quantity || 0), 0)} • <strong>Estimated Payout:</strong> ${asMoney(summary.total)}</p>
+  `;
+}
+
+function renderRecentBatches() {
+  if (!recentBatchesWrap) return;
+  if (!Array.isArray(recentBatches) || recentBatches.length === 0) {
+    recentBatchesWrap.innerHTML = '<p class="muted">No recent batches yet.</p>';
+    return;
+  }
+  recentBatchesWrap.innerHTML = `
+    <table class="sheet-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Submission</th>
+          <th>Status</th>
+          <th>Qty</th>
+          <th>Total</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${recentBatches
+          .map(
+            (item) => `
+          <tr>
+            <td>${escapeHtml(new Date(item.createdAt).toLocaleString())}</td>
+            <td>#${Number(item.submissionId)}</td>
+            <td>${escapeHtml(item.status || 'Pending')}</td>
+            <td>${Number(item.totalQty || 0)}</td>
+            <td>${asMoney(Number(item.estimatedTotal || 0))}</td>
+            <td class="row-actions">
+              <button type="button" class="secondary small" data-recent-action="lookup" data-submission-id="${Number(
+                item.submissionId
+              )}">View</button>
+              <button type="button" class="secondary small" data-recent-action="refresh" data-submission-id="${Number(
+                item.submissionId
+              )}">Refresh</button>
+            </td>
+          </tr>`
+          )
+          .join('')}
+      </tbody>
+    </table>
+  `;
+
+  recentBatchesWrap.querySelectorAll('button[data-recent-action="lookup"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const submissionId = Number(btn.getAttribute('data-submission-id'));
+      const row = recentBatches.find((item) => Number(item.submissionId) === submissionId);
+      if (!row) return;
+      if (batchLookupSubmissionIdInput) batchLookupSubmissionIdInput.value = String(submissionId);
+      if (batchLookupEmailInput) batchLookupEmailInput.value = String(row.email || '');
+      runBatchLookup({ submissionId, email: row.email || '' });
+    });
+  });
+
+  recentBatchesWrap.querySelectorAll('button[data-recent-action="refresh"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const submissionId = Number(btn.getAttribute('data-submission-id'));
+      const row = recentBatches.find((item) => Number(item.submissionId) === submissionId);
+      if (!row || !row.email) {
+        renderBatchLookupMessage('Email is required to refresh this batch. Use Find a Batch.', 'warn');
+        return;
+      }
+      runBatchLookup({ submissionId, email: row.email });
+    });
+  });
+}
+
+function upsertRecentBatch(nextItem) {
+  const normalized = normalizeRecentBatchItem(nextItem);
+  if (!normalized) return;
+  const without = recentBatches.filter((item) => Number(item.submissionId) !== Number(normalized.submissionId));
+  saveRecentBatches([normalized, ...without]);
+  renderRecentBatches();
+}
+
+async function runBatchLookup(params) {
+  if (isSellerPageView) {
+    setWorkspaceTab('batches');
+  }
+  const submissionId = Number(params?.submissionId || batchLookupSubmissionIdInput?.value);
+  const email = String(params?.email || batchLookupEmailInput?.value || '').trim();
+  if (!Number.isInteger(submissionId) || submissionId <= 0 || !email) {
+    renderBatchLookupMessage('Enter a valid Submission ID and email.', 'error');
+    return;
+  }
+  renderBatchLookupMessage('Looking up batch...', 'warn');
+  if (batchLookupSubmitBtn) batchLookupSubmitBtn.disabled = true;
+  try {
+    const res = await fetch('/api/submissions/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ submissionId, email }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Batch not found.');
+    renderBatchLookupMessage('Batch found.');
+    renderBatchLookupResult(body);
+    upsertRecentBatch({
+      submissionId: body.id,
+      shipmentId: body.shipmentId,
+      email: body.email,
+      createdAt: body.createdAt,
+      status: body.status,
+      estimatedTotal: body.estimatedTotal,
+      totalQty: body.totalQty,
+    });
+  } catch (error) {
+    renderBatchLookupMessage(error.message || 'Batch not found.', 'error');
+    renderBatchLookupResult(null);
+  } finally {
+    if (batchLookupSubmitBtn) batchLookupSubmitBtn.disabled = false;
+  }
+}
+
 function renderFaqs(rows) {
   if (!faqListWrap) return;
 
@@ -766,6 +1097,11 @@ function updateMobileSubmitBar(total, rows) {
 
 function updateShipmentVisibility(total) {
   if (!shipmentSection) return;
+  if (isSellerPageView) {
+    const shouldDisplaySection = sellerWorkspaceTab === 'shipment';
+    shipmentSection.classList.toggle('is-hidden', !shouldDisplaySection);
+    return;
+  }
   const shouldShow = total > 0 || hasSubmittedShipment;
   shipmentSection.classList.toggle('is-hidden', !shouldShow);
 }
@@ -857,6 +1193,7 @@ function updateTotal() {
   updateMobileSubmitBar(total, summary.rows);
   updateShipmentVisibility(total);
   updateProgress(total);
+  renderCurrentBatchSummary();
   return total;
 }
 
@@ -1083,6 +1420,29 @@ if (sellerRowsPerPageInput) {
   });
 }
 
+workspaceTabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const next = btn.getAttribute('data-workspace-tab');
+    setWorkspaceTab(next);
+  });
+});
+
+if (batchLookupForm) {
+  batchLookupForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    runBatchLookup();
+  });
+}
+
+if (batchLookupClearBtn) {
+  batchLookupClearBtn.addEventListener('click', () => {
+    if (batchLookupSubmissionIdInput) batchLookupSubmissionIdInput.value = '';
+    if (batchLookupEmailInput) batchLookupEmailInput.value = '';
+    renderBatchLookupMessage('');
+    renderBatchLookupResult(null);
+  });
+}
+
 shipmentJumpLinks.forEach((link) => {
   link.addEventListener('click', (e) => {
     const buylistSection = document.getElementById('buylist-tool');
@@ -1093,6 +1453,7 @@ shipmentJumpLinks.forEach((link) => {
 
     const shipmentVisible = shipmentSection && !shipmentSection.classList.contains('is-hidden');
     if (shipmentVisible) {
+      setWorkspaceTab('shipment');
       shipmentSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
       if (customerNameInput) customerNameInput.focus();
       return;
@@ -1114,10 +1475,8 @@ if (mobileGoToSubmitBtn) {
       return;
     }
 
-    if (shipmentSection && shipmentSection.classList.contains('is-hidden')) {
-      shipmentSection.classList.remove('is-hidden');
-    }
     if (shipmentSection) {
+      setWorkspaceTab('shipment');
       shipmentSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     const customerNameInput = document.getElementById('customerName');
@@ -1165,6 +1524,18 @@ form.addEventListener('submit', async (e) => {
     }
 
     renderShipment(body.shipment, payload);
+    upsertRecentBatch({
+      submissionId: body.shipment?.submissionId,
+      shipmentId: body.shipment?.id,
+      email: payload.email,
+      createdAt: body.shipment?.createdAt,
+      status: body.shipment?.status || 'Pending',
+      estimatedTotal: Number(body.shipment?.total || 0),
+      totalQty: Array.isArray(body.shipment?.items)
+        ? body.shipment.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+        : 0,
+    });
+    setWorkspaceTab('shipment');
     hasSubmittedShipment = true;
     form.reset();
     qtyMap.clear();
@@ -1178,6 +1549,10 @@ form.addEventListener('submit', async (e) => {
 
 initConditionStandardsAccordion();
 setupMobileTitlePreview();
+if (isSellerPageView) {
+  renderRecentBatches();
+  setWorkspaceTab(sellerWorkspaceTab, { persist: false });
+}
 updateTotal();
 renderSelectedItems();
 syncTableViewportHeight();

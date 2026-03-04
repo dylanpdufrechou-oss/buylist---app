@@ -331,6 +331,21 @@ const DEFAULT_HOMEPAGE_FOOTER_LINKS = [
   { label: 'Terms of Service', href: '/terms.html' },
 ];
 const DEFAULT_HOMEPAGE_PAID_OUT_TEXT = '$25,000+';
+const DEFAULT_TERMS_CONDITIONS_TEXT = [
+  '- Buylist prices apply to qualifying CIB titles that meet listed standards.',
+  '- Pricing is locked when a shipment is submitted.',
+  '- Items that fail condition standards may be rejected or returned.',
+  '- Sellers are responsible for secure packing and shipment tracking unless otherwise specified.',
+  '- Buylist pricing may change with monthly updates.',
+].join('\n');
+const DEFAULT_PRIVACY_POLICY_TEXT = [
+  '- Seller information submitted through this site is used only for shipment processing, communication, and payment-related support.',
+  '- We use submitted contact information to process and communicate about your shipment.',
+  '- Shipment details are stored for operational and recordkeeping purposes.',
+  '- We do not sell personal data to third parties.',
+].join('\n');
+const LEGAL_CONTENT_LIMIT = 20000;
+const LOOKUP_RATE_LIMIT_MS = 1200;
 
 const PACKING_SLIP_SETTING_LIMITS = {
   ship_to_business_name: 120,
@@ -343,9 +358,14 @@ const PACKING_SLIP_SETTING_LIMITS = {
   ship_to_country: 80,
   packing_next_steps_text: 2000,
 };
+const lookupRateWindowByIp = new Map();
 
 function sanitizeSettingText(raw, maxLength) {
   return safeString(raw).slice(0, maxLength);
+}
+
+function sanitizeLegalText(raw) {
+  return safeString(raw).slice(0, LEGAL_CONTENT_LIMIT);
 }
 
 function normalizeHomepageFooterLinks(input) {
@@ -1043,6 +1063,8 @@ async function initDb() {
   await setDefaultSetting('packing_next_steps_text', DEFAULT_PACKING_NEXT_STEPS_TEXT);
   await setDefaultSetting('homepage_footer_links_json', JSON.stringify(DEFAULT_HOMEPAGE_FOOTER_LINKS));
   await setDefaultSetting('homepage_paid_out_text', DEFAULT_HOMEPAGE_PAID_OUT_TEXT);
+  await setDefaultSetting('terms_conditions_text', DEFAULT_TERMS_CONDITIONS_TEXT);
+  await setDefaultSetting('privacy_policy_text', DEFAULT_PRIVACY_POLICY_TEXT);
 
   await withTransaction(async (tx) => {
     const rows = await tx.all('SELECT id, platform FROM games');
@@ -1194,13 +1216,23 @@ function getRuntimePayload() {
 }
 
 async function getAdminSettingsPayload() {
-  const [currentBuylistVersionRaw, showHighlightsRaw, packingSlipSettings, footerLinksJson, homepagePaidOutText] =
+  const [
+    currentBuylistVersionRaw,
+    showHighlightsRaw,
+    packingSlipSettings,
+    footerLinksJson,
+    homepagePaidOutText,
+    termsConditionsText,
+    privacyPolicyText,
+  ] =
     await Promise.all([
     getSettingValue('current_buylist_version', currentMonthVersion()),
     getSettingValue('show_price_change_highlights_public', 'true'),
     loadPackingSlipSettings(),
     getSettingValue('homepage_footer_links_json', JSON.stringify(DEFAULT_HOMEPAGE_FOOTER_LINKS)),
     getSettingValue('homepage_paid_out_text', DEFAULT_HOMEPAGE_PAID_OUT_TEXT),
+    getSettingValue('terms_conditions_text', DEFAULT_TERMS_CONDITIONS_TEXT),
+    getSettingValue('privacy_policy_text', DEFAULT_PRIVACY_POLICY_TEXT),
     ]);
   const currentBuylistVersion = normalizeBuylistVersion(currentBuylistVersionRaw);
   const showPriceChangeHighlightsPublic = toSettingBoolean(showHighlightsRaw, true);
@@ -1226,6 +1258,8 @@ async function getAdminSettingsPayload() {
     packing_next_steps_text: packingSlipSettings.packing_next_steps_text,
     homepage_footer_links: homepageFooterLinks,
     homepage_paid_out_text: safeString(homepagePaidOutText) || DEFAULT_HOMEPAGE_PAID_OUT_TEXT,
+    terms_conditions_text: sanitizeLegalText(termsConditionsText) || DEFAULT_TERMS_CONDITIONS_TEXT,
+    privacy_policy_text: sanitizeLegalText(privacyPolicyText) || DEFAULT_PRIVACY_POLICY_TEXT,
   };
 }
 
@@ -1398,11 +1432,20 @@ app.put(
   asyncHandler(async (req, res) => {
     const { current_buylist_version, show_price_change_highlights_public } = req.body || {};
     const currentBuylistVersion = normalizeBuylistVersion(current_buylist_version);
-    const [currentShowHighlightsRaw, existingPackingSlipSettings, existingFooterLinksJson, existingPaidOutText] = await Promise.all([
+    const [
+      currentShowHighlightsRaw,
+      existingPackingSlipSettings,
+      existingFooterLinksJson,
+      existingPaidOutText,
+      existingTermsText,
+      existingPrivacyText,
+    ] = await Promise.all([
       getSettingValue('show_price_change_highlights_public', 'true'),
       loadPackingSlipSettings(),
       getSettingValue('homepage_footer_links_json', JSON.stringify(DEFAULT_HOMEPAGE_FOOTER_LINKS)),
       getSettingValue('homepage_paid_out_text', DEFAULT_HOMEPAGE_PAID_OUT_TEXT),
+      getSettingValue('terms_conditions_text', DEFAULT_TERMS_CONDITIONS_TEXT),
+      getSettingValue('privacy_policy_text', DEFAULT_PRIVACY_POLICY_TEXT),
     ]);
     const showPriceChangeHighlightsPublic = toSettingBoolean(
       show_price_change_highlights_public,
@@ -1416,6 +1459,12 @@ app.put(
     const homepagePaidOutText = hasField('homepage_paid_out_text')
       ? safeString(body.homepage_paid_out_text).slice(0, 80) || DEFAULT_HOMEPAGE_PAID_OUT_TEXT
       : safeString(existingPaidOutText) || DEFAULT_HOMEPAGE_PAID_OUT_TEXT;
+    const termsConditionsText = hasField('terms_conditions_text')
+      ? sanitizeLegalText(body.terms_conditions_text) || DEFAULT_TERMS_CONDITIONS_TEXT
+      : sanitizeLegalText(existingTermsText) || DEFAULT_TERMS_CONDITIONS_TEXT;
+    const privacyPolicyText = hasField('privacy_policy_text')
+      ? sanitizeLegalText(body.privacy_policy_text) || DEFAULT_PRIVACY_POLICY_TEXT
+      : sanitizeLegalText(existingPrivacyText) || DEFAULT_PRIVACY_POLICY_TEXT;
     const packingSlipSettings = normalizePackingSlipSettingsInput({
       ship_to_business_name: hasField('ship_to_business_name')
         ? body.ship_to_business_name
@@ -1454,6 +1503,8 @@ app.put(
       upsertSettingValue('packing_next_steps_text', packingSlipSettings.packing_next_steps_text),
       upsertSettingValue('homepage_footer_links_json', JSON.stringify(homepageFooterLinks)),
       upsertSettingValue('homepage_paid_out_text', homepagePaidOutText),
+      upsertSettingValue('terms_conditions_text', termsConditionsText),
+      upsertSettingValue('privacy_policy_text', privacyPolicyText),
     ]);
 
     const snapshotMeta = await getSnapshotVersionMetadata(currentBuylistVersion);
@@ -1480,6 +1531,8 @@ app.put(
         packing_next_steps_text: packingSlipSettings.packing_next_steps_text,
         homepage_footer_links: homepageFooterLinks,
         homepage_paid_out_text: homepagePaidOutText,
+        terms_conditions_text: termsConditionsText,
+        privacy_policy_text: privacyPolicyText,
       },
     });
   })
@@ -1495,6 +1548,20 @@ app.get(
     res.json({
       homepageFooterLinks: parseHomepageFooterLinksSetting(footerLinksJson),
       homepagePaidOutText: safeString(homepagePaidOutText) || DEFAULT_HOMEPAGE_PAID_OUT_TEXT,
+    });
+  })
+);
+
+app.get(
+  '/api/public-legal-content',
+  asyncHandler(async (req, res) => {
+    const [termsConditionsText, privacyPolicyText] = await Promise.all([
+      getSettingValue('terms_conditions_text', DEFAULT_TERMS_CONDITIONS_TEXT),
+      getSettingValue('privacy_policy_text', DEFAULT_PRIVACY_POLICY_TEXT),
+    ]);
+    res.json({
+      termsConditionsText: sanitizeLegalText(termsConditionsText) || DEFAULT_TERMS_CONDITIONS_TEXT,
+      privacyPolicyText: sanitizeLegalText(privacyPolicyText) || DEFAULT_PRIVACY_POLICY_TEXT,
     });
   })
 );
@@ -2107,6 +2174,70 @@ async function getSubmissionDetailById(id) {
     items,
   };
 }
+
+function canLookupFromIp(ipKey) {
+  const now = Date.now();
+  const last = Number(lookupRateWindowByIp.get(ipKey) || 0);
+  if (last && now - last < LOOKUP_RATE_LIMIT_MS) return false;
+  lookupRateWindowByIp.set(ipKey, now);
+  return true;
+}
+
+function asSellerSubmissionLookupPayload(detail) {
+  return {
+    id: Number(detail.id),
+    shipmentId: `SHIP-${String(detail.id).padStart(6, '0')}`,
+    createdAt: detail.created_at,
+    status: detail.status,
+    priceVersion: detail.price_version || '',
+    sellerName: detail.seller_name || '',
+    email: detail.email || '',
+    totalQty: Number(detail.total_qty || 0),
+    estimatedTotal: Number(detail.estimated_total || 0),
+    items: Array.isArray(detail.items)
+      ? detail.items.map((item) => ({
+          title: item.title || '',
+          platform: item.platform || '',
+          qty: Number(item.qty || 0),
+          unitPriceAtSubmit: Number(item.unit_price_at_submit || 0),
+          lineTotalAtSubmit: Number(item.line_total_at_submit || 0),
+        }))
+      : [],
+  };
+}
+
+app.post(
+  '/api/submissions/lookup',
+  asyncHandler(async (req, res) => {
+    const submissionId = Number(req.body?.submissionId);
+    const email = normalizeContactEmail(req.body?.email);
+    if (!Number.isInteger(submissionId) || submissionId <= 0 || !email) {
+      return res.status(400).json({ error: 'Submission ID and email are required.' });
+    }
+
+    const ipKey = String(req.ip || req.headers['x-forwarded-for'] || 'unknown');
+    if (!canLookupFromIp(ipKey)) {
+      return res.status(429).json({ error: 'Please wait a moment and try again.' });
+    }
+
+    const match = await db.get(
+      `SELECT id
+       FROM submissions
+       WHERE id = ? AND LOWER(COALESCE(email, '')) = LOWER(?)
+       LIMIT 1`,
+      [submissionId, email]
+    );
+    if (!match) {
+      return res.status(404).json({ error: 'Batch not found.' });
+    }
+
+    const detail = await getSubmissionDetailById(submissionId);
+    if (!detail) {
+      return res.status(404).json({ error: 'Batch not found.' });
+    }
+    res.json(asSellerSubmissionLookupPayload(detail));
+  })
+);
 
 app.get(
   '/api/admin/submissions',

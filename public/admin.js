@@ -37,6 +37,8 @@ const shipToStateInput = document.getElementById('shipToState');
 const shipToPostalCodeInput = document.getElementById('shipToPostalCode');
 const shipToCountryInput = document.getElementById('shipToCountry');
 const packingNextStepsTextInput = document.getElementById('packingNextStepsText');
+const termsConditionsTextInput = document.getElementById('termsConditionsText');
+const privacyPolicyTextInput = document.getElementById('privacyPolicyText');
 const footerLinksEditor = document.getElementById('footerLinksEditor');
 const addFooterLinkBtn = document.getElementById('addFooterLink');
 const saveBuylistVersionBtn = document.getElementById('saveBuylistVersion');
@@ -221,6 +223,8 @@ let adminSettings = {
   comparison_baseline_version: null,
   homepage_footer_links: [],
   homepage_paid_out_text: '',
+  terms_conditions_text: '',
+  privacy_policy_text: '',
 };
 let contactMessages = [];
 
@@ -461,6 +465,8 @@ function getSettingsDirtyCount() {
     [shipToPostalCodeInput, adminSettings.ship_to_postal_code],
     [shipToCountryInput, adminSettings.ship_to_country],
     [packingNextStepsTextInput, adminSettings.packing_next_steps_text],
+    [termsConditionsTextInput, adminSettings.terms_conditions_text],
+    [privacyPolicyTextInput, adminSettings.privacy_policy_text],
   ];
   return optionalPairs.some(([input, value]) => input && String(input.value || '') !== String(value || '')) ? 1 : 0;
 }
@@ -1697,6 +1703,8 @@ function applyAdminSettingsData(settings, fallback = {}) {
     comparison_baseline_version: source.comparison_baseline_version || null,
     homepage_footer_links: resolvedFooterLinks,
     homepage_paid_out_text: source.homepage_paid_out_text || fallback.homepage_paid_out_text || '',
+    terms_conditions_text: source.terms_conditions_text || fallback.terms_conditions_text || '',
+    privacy_policy_text: source.privacy_policy_text || fallback.privacy_policy_text || '',
   };
   currentBuylistVersionInput.value = nextCurrentVersion;
   if (shipToBusinessNameInput) shipToBusinessNameInput.value = adminSettings.ship_to_business_name;
@@ -1708,6 +1716,8 @@ function applyAdminSettingsData(settings, fallback = {}) {
   if (shipToPostalCodeInput) shipToPostalCodeInput.value = adminSettings.ship_to_postal_code;
   if (shipToCountryInput) shipToCountryInput.value = adminSettings.ship_to_country;
   if (packingNextStepsTextInput) packingNextStepsTextInput.value = adminSettings.packing_next_steps_text;
+  if (termsConditionsTextInput) termsConditionsTextInput.value = adminSettings.terms_conditions_text;
+  if (privacyPolicyTextInput) privacyPolicyTextInput.value = adminSettings.privacy_policy_text;
   renderFooterLinksEditor();
   renderPublishMeta();
 }
@@ -1739,6 +1749,8 @@ async function saveAdminSettings() {
     packing_next_steps_text: packingNextStepsTextInput ? packingNextStepsTextInput.value : '',
     homepage_footer_links: homepageFooterLinks,
     homepage_paid_out_text: adminSettings.homepage_paid_out_text || '',
+    terms_conditions_text: termsConditionsTextInput ? termsConditionsTextInput.value : '',
+    privacy_policy_text: privacyPolicyTextInput ? privacyPolicyTextInput.value : '',
   };
 
   const res = await adminFetch('/api/admin/settings', {
@@ -2869,6 +2881,8 @@ bindGameFilterEvents();
   shipToPostalCodeInput,
   shipToCountryInput,
   packingNextStepsTextInput,
+  termsConditionsTextInput,
+  privacyPolicyTextInput,
 ].forEach((el) => {
   if (!el) return;
   const eventName = el.tagName === 'SELECT' ? 'change' : 'input';

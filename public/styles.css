@@ -2110,6 +2110,11 @@ a {
   background: rgba(6, 10, 27, 0.95);
 }
 
+footer.site-footer.home-footer {
+  display: flex;
+  justify-content: center;
+}
+
 .footer-inner {
   width: min(1100px, 92vw);
   margin: 0 auto;
@@ -2154,24 +2159,28 @@ a {
   text-decoration: underline;
 }
 
-.home-footer .footer-inner {
-  width: min(1100px, 92vw);
+footer.site-footer.home-footer .footer-inner {
+  width: min(1100px, 100%);
+  max-width: 1100px;
+  margin: 0 auto;
   padding: 0.95rem 0 1.15rem;
-  display: grid;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
   text-align: center;
   gap: 0.6rem;
 }
 
-.home-footer .footer-logo-link {
+footer.site-footer.home-footer .footer-logo-link {
   display: inline-flex;
+  width: 100%;
   align-items: center;
   justify-content: center;
   text-decoration: none;
 }
 
-.home-footer .footer-logo {
+footer.site-footer.home-footer .footer-logo {
   display: block;
   width: clamp(140px, 18vw, 220px);
   height: auto;
@@ -2180,15 +2189,59 @@ a {
   filter: drop-shadow(0 1px 6px rgba(10, 18, 44, 0.45));
 }
 
-.home-footer .footer-links {
+footer.site-footer.home-footer .footer-links {
   margin: 0 auto;
   justify-content: center;
-  width: auto;
+  align-items: center;
+  width: 100%;
   gap: 1rem;
 }
 
-.home-footer .footer-links a {
+footer.site-footer.home-footer .footer-links a {
   font-size: 0.95rem;
+}
+
+.seller-workspace-tabs {
+  display: flex;
+  gap: 0.45rem;
+  margin: 0.15rem 0 0.75rem;
+  flex-wrap: wrap;
+}
+
+.seller-workspace-tab {
+  border: 1px solid var(--line);
+  background: rgba(8, 18, 52, 0.72);
+  color: var(--ink);
+  padding: 0.36rem 0.72rem;
+  border-radius: 999px;
+  font-size: 0.86rem;
+}
+
+.seller-workspace-tab.is-active {
+  border-color: var(--line-strong);
+  background: rgba(35, 92, 163, 0.26);
+}
+
+.batches-subcard {
+  margin: 0;
+}
+
+.batch-items-table-wrap {
+  overflow: auto;
+  margin-top: 0.45rem;
+}
+
+.batch-detail-card {
+  margin-top: 0.7rem;
+}
+
+.legal-content ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1.05rem;
+}
+
+.legal-content li {
+  margin: 0.3rem 0;
 }
 
 .contact-card {
@@ -2600,17 +2653,18 @@ body.retro-theme {
     justify-content: flex-start;
   }
 
-  .home-footer .footer-inner {
-    justify-items: center;
+  footer.site-footer.home-footer .footer-inner {
+    width: 100%;
+    justify-content: center;
     align-items: center;
     gap: 0.55rem;
   }
 
-  .home-footer .footer-logo {
+  footer.site-footer.home-footer .footer-logo {
     width: clamp(132px, 42vw, 188px);
   }
 
-  .home-footer .footer-links {
+  footer.site-footer.home-footer .footer-links {
     width: 100%;
     justify-content: center;
     margin: 0 auto;
