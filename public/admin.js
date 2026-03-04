@@ -2288,7 +2288,17 @@ async function bootstrapAdmin(options = {}) {
   setActiveAdminTab(activeAdminTab, { persist: false });
   loadQuickAddDefaults();
   updateImportReplaceConfirmVisibility();
-  renderNotice('');
+  const bootstrapSectionErrors =
+    payload.section_errors && typeof payload.section_errors === 'object' ? payload.section_errors : {};
+  const bootstrapErrorEntries = Object.entries(bootstrapSectionErrors).filter((entry) => entry[1]);
+  if (bootstrapErrorEntries.length > 0) {
+    const label = bootstrapErrorEntries
+      .map(([section, message]) => `${section}: ${message}`)
+      .join(' | ');
+    renderNotice(`Connected, but some sections loaded with fallbacks. ${label}`, 'warn');
+  } else {
+    renderNotice('');
+  }
   try {
     await loadDashboardMetrics({ retries: 1 });
   } catch (dashboardErr) {
