@@ -2,7 +2,6 @@ const buylistWrap = document.getElementById('buylistTableWrap');
 const platformTabsWrap = document.getElementById('platformTabs');
 const searchInput = document.getElementById('search');
 const clearSearchBtn = document.getElementById('clearSearch');
-const comfortModeInput = document.getElementById('comfortMode');
 const sellerRowsPerPageInput = document.getElementById('sellerRowsPerPage');
 const sellerPaginationWrap = document.getElementById('sellerPagination');
 const stickyPayout = document.getElementById('stickyPayout');
@@ -39,7 +38,6 @@ const PACKING_SLIP_PATH = '/packing-slip.html';
 const SELLER_ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
 const SELLER_ROWS_PER_PAGE_DEFAULT = 25;
 const SELLER_ROWS_PER_PAGE_STORAGE_KEY = 'sellerRowsPerPage';
-const PUBLIC_COMFORT_MODE_STORAGE_KEY = 'publicComfortMode';
 const isSellerPageView = /\/seller(\.html)?$/i.test(window.location.pathname || '');
 
 let games = [];
@@ -111,27 +109,6 @@ function saveSellerRowsPerPagePreference(pageSize) {
 function syncSellerRowsPerPageControl() {
   if (!sellerRowsPerPageInput) return;
   sellerRowsPerPageInput.value = String(normalizeSellerRowsPerPage(sellerTableState.pageSize));
-}
-
-function applyComfortMode(enabled) {
-  document.body.classList.toggle('comfort-mode-on', Boolean(enabled));
-  if (comfortModeInput) comfortModeInput.value = enabled ? 'on' : 'off';
-}
-
-function loadComfortModePreference() {
-  try {
-    return localStorage.getItem(PUBLIC_COMFORT_MODE_STORAGE_KEY) === 'on';
-  } catch {
-    return false;
-  }
-}
-
-function saveComfortModePreference(enabled) {
-  try {
-    localStorage.setItem(PUBLIC_COMFORT_MODE_STORAGE_KEY, enabled ? 'on' : 'off');
-  } catch {
-    // Ignore storage write failures.
-  }
 }
 
 function formatSignedMoneyFromCents(cents) {
@@ -224,9 +201,10 @@ function renderTitleWithDelta(game, meta = priceDeltaMeta(game)) {
   const arrow = meta.className === 'up' ? '▲' : meta.className === 'down' ? '▼' : '';
   const className = meta.className ? `title-cell-value ${meta.className}` : 'title-cell-value';
   const fullTitle = escapeHtml(game.title || '');
-  return `<span class="${className} js-title-preview-trigger" data-full-title="${fullTitle}" title="${fullTitle}">${fullTitle}${
+  const recentlyAddedBadge = game?.recently_added_badge_active ? '<span class="title-new-badge">★ New</span>' : '';
+  return `<span class="title-cell-stack">${recentlyAddedBadge}<span class="${className} js-title-preview-trigger" data-full-title="${fullTitle}" title="${fullTitle}">${fullTitle}${
     arrow ? `<span class="title-delta-arrow">${arrow}</span>` : ''
-  }</span>`;
+  }</span></span>`;
 }
 
 function ensureTitlePreviewBubble() {
@@ -1066,14 +1044,6 @@ if (sellerRowsPerPageInput) {
   });
 }
 
-if (comfortModeInput) {
-  comfortModeInput.addEventListener('change', () => {
-    const enabled = comfortModeInput.value === 'on';
-    applyComfortMode(enabled);
-    saveComfortModePreference(enabled);
-  });
-}
-
 shipmentJumpLinks.forEach((link) => {
   link.addEventListener('click', (e) => {
     const buylistSection = document.getElementById('buylist-tool');
@@ -1169,7 +1139,6 @@ form.addEventListener('submit', async (e) => {
 
 initConditionStandardsAccordion();
 setupMobileTitlePreview();
-applyComfortMode(loadComfortModePreference());
 updateTotal();
 renderSelectedItems();
 syncTableViewportHeight();
@@ -1192,9 +1161,6 @@ loadFaqs().catch(() => {
 });
 
 window.addEventListener('storage', (e) => {
-  if (e.key === PUBLIC_COMFORT_MODE_STORAGE_KEY) {
-    applyComfortMode(loadComfortModePreference());
-  }
   if (e.key === BUYLIST_UPDATED_EVENT) {
     const snapshot = loadSnapshotFromStorage();
     if (snapshot) {

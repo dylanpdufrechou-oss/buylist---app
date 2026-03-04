@@ -55,6 +55,7 @@ const addPlatformInput = document.getElementById('platform');
 const addConditionInput = document.getElementById('condition');
 const addPriceInput = document.getElementById('price');
 const addActiveInput = document.getElementById('active');
+const addIsRecentlyAddedInput = document.getElementById('isRecentlyAdded');
 
 const gamesSearchInput = document.getElementById('gamesSearch');
 const gamesFilterPlatformInput = document.getElementById('gamesFilterPlatform');
@@ -688,6 +689,8 @@ function gameToDraft(game) {
     condition_note: normalizeConditionValue(game.condition_note),
     price: Number(game.price || 0),
     active: Boolean(game.active),
+    is_recently_added: Boolean(game.is_recently_added),
+    recently_added_started_at: game.recently_added_started_at || null,
     previous_price_cents:
       game.previous_price_cents === null || game.previous_price_cents === undefined
         ? null
@@ -724,6 +727,7 @@ function getRowPayloadFromDraft(id) {
     condition: normalizeConditionValue(draft.condition_note),
     price: Number(draft.price),
     active: Boolean(draft.active),
+    is_recently_added: Boolean(draft.is_recently_added),
   };
 }
 
@@ -738,6 +742,7 @@ function isRowChanged(existing, payload, isDeleted = false) {
     payload.platform !== String(existing.platform || '') ||
     normalizeConditionValue(payload.condition) !== normalizeConditionValue(existing.condition_note) ||
     payload.active !== Boolean(existing.active) ||
+    payload.is_recently_added !== Boolean(existing.is_recently_added) ||
     Number.isNaN(nextPrice) ||
     Math.abs(existingPrice - nextPrice) >= 0.001
   );
@@ -907,7 +912,7 @@ function csvEscape(value) {
 }
 
 function gamesToCsv(rows) {
-  const lines = ['title,platform,condition,price,active'];
+  const lines = ['title,platform,condition,price,active,is_recently_added,recently_added_started_at'];
   for (const row of rows) {
     const title = String(row?.title || '').trim();
     if (!title) continue;
@@ -916,13 +921,21 @@ function gamesToCsv(rows) {
     const numericPrice = Number(row?.price);
     const price = Number.isFinite(numericPrice) ? numericPrice.toFixed(2) : '0.00';
     const active = row?.active ? '1' : '0';
+    const isRecentlyAdded = row?.is_recently_added ? '1' : '0';
+    const recentlyAddedStartedAt = row?.recently_added_started_at || '';
     lines.push(
-      [title, platform, condition, price, active]
+      [title, platform, condition, price, active, isRecentlyAdded, recentlyAddedStartedAt]
         .map((value) => csvEscape(value))
         .join(',')
     );
   }
   return `${lines.join('\n')}\n`;
+}
+
+function renderRecentlyAddedCell(id, draft) {
+  return `<label class="admin-inline-check admin-inline-check-compact"><input data-field="is_recently_added" data-id="${id}" type="checkbox" ${
+    draft.is_recently_added ? 'checked' : ''
+  } /><span>New</span></label>`;
 }
 
 function canonicalGameSignature(rows) {
@@ -935,7 +948,8 @@ function canonicalGameSignature(rows) {
       const numericPrice = Number(row?.price);
       const price = Number.isFinite(numericPrice) ? numericPrice.toFixed(2) : '0.00';
       const active = row?.active ? '1' : '0';
-      return `${title}|${platform}|${condition}|${price}|${active}`;
+      const isRecentlyAdded = row?.is_recently_added ? '1' : '0';
+      return `${title}|${platform}|${condition}|${price}|${active}|${isRecentlyAdded}`;
     })
     .sort()
     .join('~');
@@ -1304,6 +1318,7 @@ function renderGamesTable() {
           <th>Platform</th>
           <th>Condition</th>
           <th>Price</th>
+          <th>New</th>
           <th>Active</th>
           <th class="games-actions-col">Actions</th>
         </tr>
@@ -1337,6 +1352,7 @@ function renderGamesTable() {
                     }
                   </div>
                 </td>
+                <td>${renderRecentlyAddedCell(id, draft)}</td>
                 <td>
                   <select data-field="active" data-id="${id}">
                     <option value="1" ${draft.active ? 'selected' : ''}>Yes</option>
@@ -1398,6 +1414,7 @@ function renderGamesTable() {
         const value = Number(el.value);
         draft.price = Number.isFinite(value) && value >= 0 ? value : 0;
       }
+      if (field === 'is_recently_added') draft.is_recently_added = Boolean(el.checked);
       if (field === 'active') draft.active = String(el.value) === '1';
       renderGamesTable();
     });
@@ -2494,6 +2511,7 @@ addGameForm.addEventListener('submit', async (e) => {
       condition,
       price: Number(addPriceInput.value),
       active: addActiveInput.value === '1',
+      is_recently_added: Boolean(addIsRecentlyAddedInput?.checked),
     };
 
     const res = await adminFetch('/api/admin/games', {
@@ -2507,6 +2525,7 @@ addGameForm.addEventListener('submit', async (e) => {
     localStorage.setItem(LAST_CONDITION_KEY, condition);
     addTitleInput.value = '';
     addPriceInput.value = '';
+    if (addIsRecentlyAddedInput) addIsRecentlyAddedInput.checked = false;
     addTitleInput.focus();
     renderNotice('Game added.');
     showToast(`Added: ${title} (${platform || 'No Platform'})`);

@@ -401,6 +401,8 @@ function asPublicGame(row) {
   const changePercent = toFiniteNumber(row.price_change_percent, null);
   const priceChangeDirection = safeString(row.price_change_direction) || 'none';
   const baselineVersion = safeString(row.comparison_baseline_version) || null;
+  const isRecentlyAdded = Number(row.is_recently_added) === 1 || row.is_recently_added === true;
+  const recentlyAddedStartedAt = safeString(row.recently_added_started_at) || null;
   return {
     id: row.id,
     title: row.title,
@@ -416,6 +418,12 @@ function asPublicGame(row) {
     price_change_percent: changePercent,
     price_change_direction: priceChangeDirection,
     comparison_baseline_version: baselineVersion,
+    is_recently_added: isRecentlyAdded,
+    recently_added_started_at: recentlyAddedStartedAt,
+    recently_added_badge_active: isRecentlyAddedBadgeActive({
+      is_recently_added: isRecentlyAdded,
+      recently_added_started_at: recentlyAddedStartedAt,
+    }),
   };
 }
 
@@ -438,6 +446,22 @@ function parseActiveValue(raw) {
   return null;
 }
 
+function parseBooleanFlagValue(raw, fallback = 0) {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const value = safeString(raw).toLowerCase();
+  if (['1', 'true', 'yes', 'on', 'active'].includes(value)) return 1;
+  if (['0', 'false', 'no', 'off', 'inactive'].includes(value)) return 0;
+  return fallback;
+}
+
+function normalizeOptionalTimestamp(raw) {
+  const value = safeString(raw);
+  if (!value) return null;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.toISOString();
+}
+
 function gameKey(title, platform, condition) {
   return `${safeString(title).toLowerCase()}|${normalizePlatform(platform).toLowerCase()}|${normalizeCondition(
     condition
@@ -454,6 +478,18 @@ function formatPriceChangePercent(changeCents, previousPriceCents) {
   if (prev === null || prev <= 0) return null;
   const pct = (Number(changeCents || 0) / prev) * 100;
   return Number(pct.toFixed(1));
+}
+
+const RECENTLY_ADDED_BADGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+function isRecentlyAddedBadgeActive(gameRow) {
+  const enabled = Number(gameRow?.is_recently_added) === 1 || gameRow?.is_recently_added === true;
+  if (!enabled) return false;
+  const startedAt = normalizeOptionalTimestamp(gameRow?.recently_added_started_at);
+  if (!startedAt) return false;
+  const startedMs = new Date(startedAt).getTime();
+  if (!Number.isFinite(startedMs)) return false;
+  return Date.now() - startedMs < RECENTLY_ADDED_BADGE_WINDOW_MS;
 }
 
 function withPriceChangeFields(gameRow, baselineVersion, baselineMap) {
@@ -573,7 +609,7 @@ function parseGamesCsv(csvText) {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  const expectedHeader = 'title,platform,condition,price,active';
+  const expectedHeader = 'title,platform,condition,price,active,is_recently_added,recently_added_started_at';
   if (lines.length < 2) {
     return {
       rows: [],
@@ -582,7 +618,11 @@ function parseGamesCsv(csvText) {
     };
   }
 
-  if (safeString(lines[0]).toLowerCase() !== expectedHeader) {
+  const header = safeString(lines[0]).toLowerCase();
+  const legacyHeader = 'title,platform,condition,price,active';
+  const isExtended = header === expectedHeader;
+  const isLegacy = header === legacyHeader;
+  if (!isExtended && !isLegacy) {
     return {
       rows: [],
       errors: [{ row: 1, reason: `Invalid header. Use exactly: ${expectedHeader}` }],
@@ -595,17 +635,26 @@ function parseGamesCsv(csvText) {
   for (let i = 1; i < lines.length; i += 1) {
     const rowNumber = i + 1;
     const parts = splitCsvLineSimple(lines[i]);
-    if (parts.length !== 5) {
-      errors.push({ row: rowNumber, reason: 'Expected 5 columns: title,platform,condition,price,active.' });
+    if ((isExtended && parts.length !== 7) || (isLegacy && parts.length !== 5)) {
+      errors.push({
+        row: rowNumber,
+        reason: isExtended
+          ? 'Expected 7 columns: title,platform,condition,price,active,is_recently_added,recently_added_started_at.'
+          : 'Expected 5 columns: title,platform,condition,price,active.',
+      });
       continue;
     }
 
-    const [titleRaw, platformRaw, conditionRaw, priceRaw, activeRaw] = parts;
+    const [titleRaw, platformRaw, conditionRaw, priceRaw, activeRaw, recentlyAddedRaw = '', recentlyAddedStartedAtRaw = ''] = parts;
     const title = safeString(titleRaw);
     const platform = normalizePlatform(platformRaw);
     const condition = normalizeCondition(conditionRaw);
     const priceCents = parsePriceToCents(priceRaw);
     const active = parseActiveValue(activeRaw);
+    const isRecentlyAdded = parseBooleanFlagValue(recentlyAddedRaw, 0);
+    const recentlyAddedStartedAt = isRecentlyAdded
+      ? normalizeOptionalTimestamp(recentlyAddedStartedAtRaw) || new Date().toISOString()
+      : null;
 
     if (!title) {
       errors.push({ row: rowNumber, reason: 'Missing title.' });
@@ -636,6 +685,8 @@ function parseGamesCsv(csvText) {
       priceCents,
       price: Number((priceCents / 100).toFixed(2)),
       active,
+      is_recently_added: isRecentlyAdded,
+      recently_added_started_at: recentlyAddedStartedAt,
       key: gameKey(title, platform, condition),
     });
   }
@@ -645,7 +696,7 @@ function parseGamesCsv(csvText) {
 
 async function currentGamesByKey() {
   const map = new Map();
-  const rows = await db.all('SELECT id, title, platform, condition_note FROM games');
+  const rows = await db.all('SELECT id, title, platform, condition_note, is_recently_added, recently_added_started_at FROM games');
   for (const row of rows) {
     const key = gameKey(row.title, row.platform, row.condition_note);
     if (!map.has(key)) map.set(key, row);
@@ -702,10 +753,10 @@ function buildGameFilterWhere(query) {
 
 async function getGameRows(includeInactive) {
   const sql = includeInactive
-    ? `SELECT id, title, platform, condition_note, price_cents, active, updated_at
+    ? `SELECT id, title, platform, condition_note, price_cents, active, updated_at, is_recently_added, recently_added_started_at
        FROM games
        ORDER BY title ASC`
-    : `SELECT id, title, platform, condition_note, price_cents, active, updated_at
+    : `SELECT id, title, platform, condition_note, price_cents, active, updated_at, is_recently_added, recently_added_started_at
        FROM games
        WHERE active = 1
        ORDER BY title ASC`;
@@ -726,6 +777,8 @@ const SQLITE_SCHEMA_SQL = `
     condition_note TEXT,
     price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
     active INTEGER NOT NULL DEFAULT 1,
+    is_recently_added INTEGER NOT NULL DEFAULT 0,
+    recently_added_started_at TEXT,
     pricecharting_product_id TEXT,
     market_source TEXT DEFAULT 'pricecharting',
     market_last_checked_at TEXT,
@@ -818,6 +871,8 @@ const POSTGRES_SCHEMA_SQL = `
     condition_note TEXT,
     price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
     active INTEGER NOT NULL DEFAULT 1,
+    is_recently_added INTEGER NOT NULL DEFAULT 0,
+    recently_added_started_at TEXT,
     pricecharting_product_id TEXT,
     market_source TEXT DEFAULT 'pricecharting',
     market_last_checked_at TIMESTAMPTZ,
@@ -902,6 +957,8 @@ async function initDb() {
   await db.exec(usingPostgres ? POSTGRES_SCHEMA_SQL : SQLITE_SCHEMA_SQL);
 
   await ensureColumn('submissions', 'updated_at', usingPostgres ? 'TIMESTAMPTZ' : 'TEXT');
+  await ensureColumn('games', 'is_recently_added', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn('games', 'recently_added_started_at', 'TEXT');
   await ensureColumn('submissions', 'status', "TEXT NOT NULL DEFAULT 'Pending'");
   await ensureColumn('submissions', 'price_version', 'TEXT');
   await ensureColumn('submissions', 'estimated_total_cents', 'INTEGER NOT NULL DEFAULT 0');
@@ -1599,9 +1656,9 @@ app.post(
       await tx.run('DELETE FROM games');
       for (const row of dedupedRows) {
         await tx.run(
-          `INSERT INTO games (title, platform, condition_note, price_cents, active, updated_at)
-           VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-          [row.title, row.platform, row.condition, row.priceCents, row.active]
+          `INSERT INTO games (title, platform, condition_note, price_cents, active, is_recently_added, recently_added_started_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+          [row.title, row.platform, row.condition, row.priceCents, row.active, row.is_recently_added, row.recently_added_started_at]
         );
         inserted += 1;
       }
@@ -1622,17 +1679,26 @@ app.post(
         }
         await tx.run(
           `UPDATE games
-           SET title = ?, platform = ?, condition_note = ?, price_cents = ?, active = ?, updated_at = datetime('now')
+           SET title = ?, platform = ?, condition_note = ?, price_cents = ?, active = ?, is_recently_added = ?, recently_added_started_at = ?, updated_at = datetime('now')
            WHERE id = ?`,
-          [row.title, row.platform, row.condition, row.priceCents, row.active, existing.id]
+          [
+            row.title,
+            row.platform,
+            row.condition,
+            row.priceCents,
+            row.active,
+            row.is_recently_added,
+            row.recently_added_started_at,
+            existing.id,
+          ]
         );
         updated += 1;
         continue;
       }
       await tx.run(
-        `INSERT INTO games (title, platform, condition_note, price_cents, active, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-        [row.title, row.platform, row.condition, row.priceCents, row.active]
+        `INSERT INTO games (title, platform, condition_note, price_cents, active, is_recently_added, recently_added_started_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        [row.title, row.platform, row.condition, row.priceCents, row.active, row.is_recently_added, row.recently_added_started_at]
       );
       inserted += 1;
     }
@@ -2194,7 +2260,7 @@ app.post(
   '/api/admin/games',
   requireAdmin,
   asyncHandler(async (req, res) => {
-  const { title, platform, condition, condition_note, conditionNote, price, active } = req.body || {};
+  const { title, platform, condition, condition_note, conditionNote, price, active, is_recently_added } = req.body || {};
   if (!title || typeof title !== 'string') {
     return res.status(400).json({ error: 'Title is required' });
   }
@@ -2204,21 +2270,31 @@ app.post(
     return res.status(400).json({ error: 'Price must be a non-negative number' });
   }
   const normalizedCondition = normalizeCondition(condition ?? condition_note ?? conditionNote);
+  const isRecentlyAdded = parseBooleanFlagValue(is_recently_added, 0);
+  const recentlyAddedStartedAt = isRecentlyAdded ? new Date().toISOString() : null;
 
   const info = await db.run(
     usingPostgres
       ? `INSERT INTO games
-          (title, platform, condition_note, price_cents, active, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'))
+          (title, platform, condition_note, price_cents, active, is_recently_added, recently_added_started_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
          RETURNING id`
       : `INSERT INTO games
-          (title, platform, condition_note, price_cents, active, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-    [title.trim(), normalizePlatform(platform), normalizedCondition, priceCents, active === false ? 0 : 1]
+          (title, platform, condition_note, price_cents, active, is_recently_added, recently_added_started_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+    [
+      title.trim(),
+      normalizePlatform(platform),
+      normalizedCondition,
+      priceCents,
+      active === false ? 0 : 1,
+      isRecentlyAdded,
+      recentlyAddedStartedAt,
+    ]
   );
 
   const created = await db.get(
-    `SELECT id, title, platform, condition_note, price_cents, active, updated_at
+    `SELECT id, title, platform, condition_note, price_cents, active, is_recently_added, recently_added_started_at, updated_at
      FROM games
      WHERE id = ?`,
     [Number(info.lastInsertRowid)]
@@ -2237,12 +2313,12 @@ app.put(
     return res.status(400).json({ error: 'Invalid ID' });
   }
 
-  const existing = await db.get('SELECT id FROM games WHERE id = ?', [id]);
+  const existing = await db.get('SELECT id, is_recently_added, recently_added_started_at FROM games WHERE id = ?', [id]);
   if (!existing) {
     return res.status(404).json({ error: 'Game not found' });
   }
 
-  const { title, platform, condition, condition_note, conditionNote, price, active } = req.body || {};
+  const { title, platform, condition, condition_note, conditionNote, price, active, is_recently_added } = req.body || {};
   if (!title || typeof title !== 'string') {
     return res.status(400).json({ error: 'Title is required' });
   }
@@ -2252,6 +2328,14 @@ app.put(
     return res.status(400).json({ error: 'Price must be a non-negative number' });
   }
   const normalizedCondition = normalizeCondition(condition ?? condition_note ?? conditionNote);
+  const nextRecentlyAdded = parseBooleanFlagValue(is_recently_added, Number(existing.is_recently_added) === 1 ? 1 : 0);
+  const wasRecentlyAdded = Number(existing.is_recently_added) === 1;
+  let nextRecentlyAddedStartedAt = normalizeOptionalTimestamp(existing.recently_added_started_at);
+  if (nextRecentlyAdded && !wasRecentlyAdded) {
+    nextRecentlyAddedStartedAt = new Date().toISOString();
+  } else if (!nextRecentlyAdded) {
+    nextRecentlyAddedStartedAt = null;
+  }
 
   await db.run(
     `UPDATE games
@@ -2260,13 +2344,24 @@ app.put(
          condition_note = ?,
          price_cents = ?,
          active = ?,
+         is_recently_added = ?,
+         recently_added_started_at = ?,
          updated_at = datetime('now')
      WHERE id = ?`,
-    [title.trim(), normalizePlatform(platform), normalizedCondition, priceCents, active ? 1 : 0, id]
+    [
+      title.trim(),
+      normalizePlatform(platform),
+      normalizedCondition,
+      priceCents,
+      active ? 1 : 0,
+      nextRecentlyAdded,
+      nextRecentlyAddedStartedAt,
+      id,
+    ]
   );
 
   const updated = await db.get(
-    `SELECT id, title, platform, condition_note, price_cents, active, updated_at
+    `SELECT id, title, platform, condition_note, price_cents, active, is_recently_added, recently_added_started_at, updated_at
      FROM games
      WHERE id = ?`,
     [id]
@@ -2319,9 +2414,9 @@ app.post(
     for (const row of parsed.rows) {
       await tx.run(
         `INSERT INTO games
-          (title, platform, condition_note, price_cents, active, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-        [row.title, row.platform, row.condition, row.priceCents, row.active]
+          (title, platform, condition_note, price_cents, active, is_recently_added, recently_added_started_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        [row.title, row.platform, row.condition, row.priceCents, row.active, row.is_recently_added, row.recently_added_started_at]
       );
     }
   });
@@ -2336,14 +2431,14 @@ app.get(
   asyncHandler(async (req, res) => {
   const filter = buildGameFilterWhere(req.query || {});
   const rows = await db.all(
-    `SELECT title, platform, condition_note, price_cents, active
+    `SELECT title, platform, condition_note, price_cents, active, is_recently_added, recently_added_started_at
      FROM games
      ${filter.whereSql}
      ORDER BY title ASC`,
     filter.params
   );
 
-  const lines = ['title,platform,condition,price,active'];
+  const lines = ['title,platform,condition,price,active,is_recently_added,recently_added_started_at'];
   for (const r of rows) {
     lines.push(
       [
@@ -2352,6 +2447,8 @@ app.get(
         normalizeCondition(r.condition_note),
         (r.price_cents / 100).toFixed(2),
         r.active ? '1' : '0',
+        Number(r.is_recently_added) === 1 ? '1' : '0',
+        normalizeOptionalTimestamp(r.recently_added_started_at) || '',
       ].join(',')
     );
   }

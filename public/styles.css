@@ -1289,9 +1289,7 @@ td {
 }
 
 .game-title-cell {
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .muted {
@@ -1771,6 +1769,27 @@ input[type='checkbox'] {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
+}
+
+.admin-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 42px;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.admin-inline-check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.admin-inline-check-compact {
+  min-height: 0;
+  font-size: 0.82rem;
+  justify-content: center;
 }
 
 .title-cell-value.up {
@@ -2809,4 +2828,28 @@ body.retro-theme {
   .has-mobile-submit-bar .container {
     padding-bottom: calc(6.2rem + env(safe-area-inset-bottom));
   }
+}
+.title-cell-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.18rem;
+  max-width: 100%;
+}
+
+.title-new-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  max-width: 100%;
+  padding: 0.08rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid rgba(73, 211, 123, 0.58);
+  background: rgba(20, 88, 48, 0.32);
+  color: #7ef0aa;
+  font-size: 0.63rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }

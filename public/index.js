@@ -2,7 +2,6 @@ const buylistWrap = document.getElementById('buylistTableWrap');
 const platformTabsWrap = document.getElementById('platformTabs');
 const searchInput = document.getElementById('search');
 const clearSearchBtn = document.getElementById('clearSearch');
-const comfortModeInput = document.getElementById('comfortMode');
 const homeRowsPerPageInput = document.getElementById('homeRowsPerPage');
 const homeViewingPerPage = document.getElementById('homeViewingPerPage');
 const homePaginationWrap = document.getElementById('homePagination');
@@ -27,7 +26,6 @@ const TITLE_PREVIEW_HOLD_MS = 220;
 const HOME_ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
 const HOME_ROWS_PER_PAGE_DEFAULT = 25;
 const HOME_ROWS_PER_PAGE_STORAGE_KEY = 'homeRowsPerPage';
-const PUBLIC_COMFORT_MODE_STORAGE_KEY = 'publicComfortMode';
 
 let games = [];
 const qtyMap = new Map();
@@ -89,27 +87,6 @@ function loadHomeRowsPerPagePreference() {
 function saveHomeRowsPerPagePreference(value) {
   try {
     localStorage.setItem(HOME_ROWS_PER_PAGE_STORAGE_KEY, String(normalizeHomeRowsPerPage(value)));
-  } catch {
-    // Ignore storage write failures.
-  }
-}
-
-function applyComfortMode(enabled) {
-  document.body.classList.toggle('comfort-mode-on', Boolean(enabled));
-  if (comfortModeInput) comfortModeInput.value = enabled ? 'on' : 'off';
-}
-
-function loadComfortModePreference() {
-  try {
-    return localStorage.getItem(PUBLIC_COMFORT_MODE_STORAGE_KEY) === 'on';
-  } catch {
-    return false;
-  }
-}
-
-function saveComfortModePreference(enabled) {
-  try {
-    localStorage.setItem(PUBLIC_COMFORT_MODE_STORAGE_KEY, enabled ? 'on' : 'off');
   } catch {
     // Ignore storage write failures.
   }
@@ -214,9 +191,10 @@ function renderTitleWithDelta(game, meta = priceDeltaMeta(game)) {
   const arrow = meta.className === 'up' ? '▲' : meta.className === 'down' ? '▼' : '';
   const className = meta.className ? `title-cell-value ${meta.className}` : 'title-cell-value';
   const fullTitle = escapeHtml(game.title || '');
-  return `<span class="${className} js-title-preview-trigger" data-full-title="${fullTitle}" title="${fullTitle}">${fullTitle}${
+  const recentlyAddedBadge = game?.recently_added_badge_active ? '<span class="title-new-badge">★ New</span>' : '';
+  return `<span class="title-cell-stack">${recentlyAddedBadge}<span class="${className} js-title-preview-trigger" data-full-title="${fullTitle}" title="${fullTitle}">${fullTitle}${
     arrow ? `<span class="title-delta-arrow">${arrow}</span>` : ''
-  }</span>`;
+  }</span></span>`;
 }
 
 function ensureTitlePreviewBubble() {
@@ -831,14 +809,6 @@ if (homeRowsPerPageInput) {
   });
 }
 
-if (comfortModeInput) {
-  comfortModeInput.addEventListener('change', () => {
-    const enabled = comfortModeInput.value === 'on';
-    applyComfortMode(enabled);
-    saveComfortModePreference(enabled);
-  });
-}
-
 if (mobileGoToSubmitBtn) {
   mobileGoToSubmitBtn.addEventListener('click', () => {
     const summary = getSelectionSummary();
@@ -898,7 +868,6 @@ form.addEventListener('submit', async (e) => {
 });
 
 setupMobileTitlePreview();
-applyComfortMode(loadComfortModePreference());
 syncHomeRowsPerPageControl();
 
 loadGames().catch(() => {
@@ -912,9 +881,6 @@ loadFaqs().catch(() => {
 });
 
 window.addEventListener('storage', (e) => {
-  if (e.key === PUBLIC_COMFORT_MODE_STORAGE_KEY) {
-    applyComfortMode(loadComfortModePreference());
-  }
   if (e.key === BUYLIST_UPDATED_EVENT) {
     const snapshot = loadSnapshotFromStorage();
     if (snapshot) {

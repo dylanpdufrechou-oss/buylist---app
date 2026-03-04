@@ -113,6 +113,10 @@
                 <option value="1">Active</option>
                 <option value="0">Inactive</option>
               </select>
+              <label class="admin-inline-check">
+                <input id="isRecentlyAdded" type="checkbox" />
+                <span>Show New badge</span>
+              </label>
               <button type="submit">Add</button>
             </form>
           </details>
@@ -170,7 +174,7 @@
                 Import CSV
                 <input id="importCsv" type="file" accept=".csv" style="display: none" />
               </label>
-              <span class="muted">CSV header: title,platform,condition,price,active</span>
+              <span class="muted">CSV header: title,platform,condition,price,active,is_recently_added,recently_added_started_at</span>
             </div>
 
             <div id="bulkToolbar" class="bulk-toolbar is-hidden">
