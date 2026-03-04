@@ -763,7 +763,7 @@ function buildGameFilterWhere(query) {
 }
 
 async function getGameRows(includeInactive) {
-  const fullSql = includeInactive
+  const sql = includeInactive
     ? `SELECT id, title, platform, condition_note, price_cents, active, upc, is_hot, notes, updated_at
        FROM games
        ORDER BY title ASC`
@@ -771,26 +771,8 @@ async function getGameRows(includeInactive) {
        FROM games
        WHERE active = 1
        ORDER BY title ASC`;
-  const legacySql = includeInactive
-    ? `SELECT id, title, platform, condition_note, price_cents, active, updated_at
-       FROM games
-       ORDER BY title ASC`
-    : `SELECT id, title, platform, condition_note, price_cents, active, updated_at
-       FROM games
-       WHERE active = 1
-       ORDER BY title ASC`;
 
-  let rows;
-  try {
-    rows = await db.all(fullSql);
-  } catch (error) {
-    rows = (await db.all(legacySql)).map((row) => ({
-      ...row,
-      upc: null,
-      is_hot: 0,
-      notes: '',
-    }));
-  }
+  const rows = await db.all(sql);
   const currentBuylistVersion = normalizeBuylistVersion(
     await getSettingValue('current_buylist_version', currentMonthVersion())
   );
@@ -1243,65 +1225,31 @@ async function getAdminSubmissionsPayload(query = {}) {
   const offset = (safePage - 1) * pageSize;
 
   const defaultVersion = normalizeBuylistVersion(await getSettingValue('current_buylist_version', currentMonthVersion()));
-  let rows;
-  try {
-    rows = (
-      await db.all(
-        `SELECT s.id, s.customer_name, s.email, s.phone, s.created_at, s.updated_at, s.status, s.price_version, s.estimated_total_cents,
-                (SELECT COUNT(*) FROM submission_items si WHERE si.submission_id = s.id) AS item_count,
-                (SELECT COALESCE(SUM(si.quantity), 0) FROM submission_items si WHERE si.submission_id = s.id) AS total_qty
-         FROM submissions s
-         ${filter.whereSql}
-         ORDER BY ${filter.orderSql}
-         LIMIT ? OFFSET ?`,
-        [...filter.params, pageSize, offset]
-      )
-    ).map((row) => ({
-      id: row.id,
-      created_at: row.created_at,
-      updated_at: row.updated_at || row.created_at,
-      seller_name: row.customer_name,
-      email: row.email || '',
-      phone: row.phone || '',
-      item_count: Number(row.item_count || 0),
-      total_qty: Number(row.total_qty || 0),
-      estimated_total: centsToMoney(Number(row.estimated_total_cents || 0)),
-      estimated_total_cents: Number(row.estimated_total_cents || 0),
-      status: normalizeSubmissionStatus(row.status),
-      price_version: row.price_version || defaultVersion,
-    }));
-  } catch (error) {
-    rows = (
-      await db.all(
-        `SELECT s.id, s.customer_name, s.email, s.phone, s.created_at,
-                (SELECT COUNT(*) FROM submission_items si WHERE si.submission_id = s.id) AS item_count,
-                (SELECT COALESCE(SUM(si.quantity), 0) FROM submission_items si WHERE si.submission_id = s.id) AS total_qty,
-                (
-                  SELECT COALESCE(SUM(si.quantity * COALESCE(si.price_cents_at_submission, 0)), 0)
-                  FROM submission_items si
-                  WHERE si.submission_id = s.id
-                ) AS estimated_total_cents
-         FROM submissions s
-         ${filter.whereSql}
-         ORDER BY ${filter.orderSql}
-         LIMIT ? OFFSET ?`,
-        [...filter.params, pageSize, offset]
-      )
-    ).map((row) => ({
-      id: row.id,
-      created_at: row.created_at,
-      updated_at: row.created_at,
-      seller_name: row.customer_name,
-      email: row.email || '',
-      phone: row.phone || '',
-      item_count: Number(row.item_count || 0),
-      total_qty: Number(row.total_qty || 0),
-      estimated_total: centsToMoney(Number(row.estimated_total_cents || 0)),
-      estimated_total_cents: Number(row.estimated_total_cents || 0),
-      status: 'Pending',
-      price_version: defaultVersion,
-    }));
-  }
+  const rows = (
+    await db.all(
+      `SELECT s.id, s.customer_name, s.email, s.phone, s.created_at, s.updated_at, s.status, s.price_version, s.estimated_total_cents,
+              (SELECT COUNT(*) FROM submission_items si WHERE si.submission_id = s.id) AS item_count,
+              (SELECT COALESCE(SUM(si.quantity), 0) FROM submission_items si WHERE si.submission_id = s.id) AS total_qty
+       FROM submissions s
+       ${filter.whereSql}
+       ORDER BY ${filter.orderSql}
+       LIMIT ? OFFSET ?`,
+      [...filter.params, pageSize, offset]
+    )
+  ).map((row) => ({
+    id: row.id,
+    created_at: row.created_at,
+    updated_at: row.updated_at || row.created_at,
+    seller_name: row.customer_name,
+    email: row.email || '',
+    phone: row.phone || '',
+    item_count: Number(row.item_count || 0),
+    total_qty: Number(row.total_qty || 0),
+    estimated_total: centsToMoney(Number(row.estimated_total_cents || 0)),
+    estimated_total_cents: Number(row.estimated_total_cents || 0),
+    status: normalizeSubmissionStatus(row.status),
+    price_version: row.price_version || defaultVersion,
+  }));
 
   return {
     rows,
@@ -1371,56 +1319,28 @@ app.get(
       Pragma: 'no-cache',
       Expires: '0',
     });
-    const results = await Promise.allSettled([
-      getAdminSettingsPayload(),
-      getAdminGamesPayload(),
-      getAdminSubmissionsPayload({ page: 1, pageSize: 25, sort: 'newest', status: 'All', q: '' }),
-      getAdminFaqsPayload(),
-    ]);
-    const [settingsResult, gamesResult, submissionsResult, faqsResult] = results;
-    const sectionErrors = {};
-
-    if (settingsResult.status === 'rejected') sectionErrors.settings = settingsResult.reason?.message || 'Failed to load settings.';
-    if (gamesResult.status === 'rejected') sectionErrors.games = gamesResult.reason?.message || 'Failed to load games.';
-    if (submissionsResult.status === 'rejected') {
-      sectionErrors.submissions = submissionsResult.reason?.message || 'Failed to load submissions.';
+    try {
+      const [settings, games, submissions, faqs] = await Promise.all([
+        getAdminSettingsPayload(),
+        getAdminGamesPayload(),
+        getAdminSubmissionsPayload({ page: 1, pageSize: 25, sort: 'newest', status: 'All', q: '' }),
+        getAdminFaqsPayload(),
+      ]);
+      res.json({
+        runtime: getRuntimePayload(),
+        settings,
+        games,
+        submissions,
+        faqs,
+      });
+    } catch (error) {
+      const message = error && error.message ? error.message : 'Could not load admin bootstrap.';
+      const status = Number(error && error.status);
+      res.status(status >= 400 && status < 600 ? status : 500).json({
+        error: message,
+        source: 'bootstrap',
+      });
     }
-    if (faqsResult.status === 'rejected') sectionErrors.faqs = faqsResult.reason?.message || 'Failed to load FAQs.';
-
-    res.json({
-      runtime: getRuntimePayload(),
-      settings:
-        settingsResult.status === 'fulfilled'
-          ? settingsResult.value
-          : {
-              current_buylist_version: currentMonthVersion(),
-              show_price_change_highlights_public: true,
-              homepage_paid_out_text: '$25,000+',
-              last_published_version: null,
-              last_published_at: null,
-              comparison_baseline_version: null,
-              ship_to_business_name: 'I_BuyGames Buylist',
-              ship_to_contact_name: '',
-              ship_to_address_line1: '',
-              ship_to_address_line2: '',
-              ship_to_city: '',
-              ship_to_state: '',
-              ship_to_postal_code: '',
-              ship_to_country: 'USA',
-              packing_next_steps_text: DEFAULT_PACKING_NEXT_STEPS_TEXT,
-            },
-      games: gamesResult.status === 'fulfilled' ? gamesResult.value : [],
-      submissions:
-        submissionsResult.status === 'fulfilled'
-          ? submissionsResult.value
-          : {
-              rows: [],
-              pagination: { page: 1, pageSize: 25, total: 0, totalPages: 1 },
-              filters: { status: 'All', q: '', sort: 'newest' },
-            },
-      faqs: faqsResult.status === 'fulfilled' ? faqsResult.value : [],
-      section_errors: sectionErrors,
-    });
   })
 );
 
