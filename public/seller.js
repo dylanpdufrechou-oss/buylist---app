@@ -65,26 +65,12 @@ const DEFAULT_HOMEPAGE_FOOTER_LINKS = [
 
 let games = [];
 const qtyMap = new Map();
-const platformTabs = [
-  'Wii',
-  'PS3',
-  'PS2',
-  'PS4',
-  'OG Xbox',
-  'Xbox 360',
-  'Xbox One',
-  'Wii U',
-  'Nintendo Switch',
-  '3DS',
-  'DS',
-];
-let activePlatformTab = platformTabs[0] || '';
+let activePlatformTab = ALL_PLATFORMS_VALUE;
 let gamesSignature = '';
 let localSnapshotUpdatedAt = 0;
 let hasSubmittedShipment = false;
 let mobileSubmitToastTimer = 0;
 const mobilePlatformMedia = window.matchMedia(MOBILE_PLATFORM_BREAKPOINT_QUERY);
-let isMobilePlatformUi = mobilePlatformMedia.matches;
 let titlePreviewBubble = null;
 let titlePreviewHoldTimer = 0;
 let titlePreviewTrigger = null;
@@ -944,82 +930,60 @@ function matchesPlatformTab(game, tab) {
   return normalizePlatformForTab(game.platform) === tab;
 }
 
+function getAvailablePlatformTabs() {
+  const tabs = new Set();
+  for (const game of games) {
+    const tab = normalizePlatformForTab(game.platform);
+    if (tab) tabs.add(tab);
+  }
+  return Array.from(tabs).sort((a, b) => a.localeCompare(b));
+}
+
 function getGamesForPlatform(tab) {
   if (tab === ALL_PLATFORMS_VALUE) return games.slice();
   return games.filter((g) => matchesPlatformTab(g, tab));
 }
 
-function ensureActivePlatformSelection() {
+function ensureActivePlatformSelection(platformTabs) {
   if (!activePlatformTab) {
-    activePlatformTab = platformTabs[0] || '';
-    return;
+    activePlatformTab = ALL_PLATFORMS_VALUE;
   }
-  if (!isMobilePlatformUi && activePlatformTab === ALL_PLATFORMS_VALUE) {
-    activePlatformTab = platformTabs[0] || '';
+  if (activePlatformTab !== ALL_PLATFORMS_VALUE && !platformTabs.includes(activePlatformTab)) {
+    activePlatformTab = ALL_PLATFORMS_VALUE;
   }
 }
 
 function renderTabs() {
-  ensureActivePlatformSelection();
+  if (!platformTabsWrap) return;
+  const platformTabs = getAvailablePlatformTabs();
+  ensureActivePlatformSelection(platformTabs);
   const countsByTab = new Map(platformTabs.map((tab) => [tab, getGamesForPlatform(tab).length]));
   const totalCount = games.length;
-  platformTabsWrap.classList.toggle('is-mobile-select', isMobilePlatformUi);
 
-  if (isMobilePlatformUi) {
-    platformTabsWrap.innerHTML = `
-      <label class="platform-select-label" for="platformSelectMobile">Platform</label>
-      <select id="platformSelectMobile" class="platform-select">
-        <option value="${ALL_PLATFORMS_VALUE}" ${
-      activePlatformTab === ALL_PLATFORMS_VALUE ? 'selected' : ''
-    }>All Platforms (${totalCount})</option>
-        ${platformTabs
-          .map((tab) => {
-            const count = countsByTab.get(tab) || 0;
-            return `<option value="${escapeHtml(tab)}" ${tab === activePlatformTab ? 'selected' : ''}>${escapeHtml(
-              `${tab} (${count})`
-            )}</option>`;
-          })
-          .join('')}
-      </select>
-    `;
+  platformTabsWrap.innerHTML = `
+    <label class="platform-select-label" for="platformSelect">Platform</label>
+    <select id="platformSelect" class="platform-select">
+      <option value="${ALL_PLATFORMS_VALUE}" ${activePlatformTab === ALL_PLATFORMS_VALUE ? 'selected' : ''}>All Platforms (${totalCount})</option>
+      ${platformTabs
+        .map((tab) => {
+          const count = countsByTab.get(tab) || 0;
+          return `<option value="${escapeHtml(tab)}" ${tab === activePlatformTab ? 'selected' : ''}>${escapeHtml(
+            `${tab} (${count})`
+          )}</option>`;
+        })
+        .join('')}
+    </select>
+  `;
 
-    const select = document.getElementById('platformSelectMobile');
-    if (select) {
-      select.addEventListener('change', () => {
-        activePlatformTab = select.value || ALL_PLATFORMS_VALUE;
-        sellerTableState.page = 1;
-        renderTabs();
-        renderTable();
-        if (searchInput) searchInput.focus();
-      });
-    }
-    return;
-  }
-
-  platformTabsWrap.innerHTML = platformTabs
-    .map(
-      (tab) => `
-        <button
-          type="button"
-          class="tab-btn ${tab === activePlatformTab ? 'active' : ''}"
-          data-platform-tab="${escapeHtml(tab)}"
-          title="${escapeHtml(`${tab} (${countsByTab.get(tab) || 0})`)}"
-        >
-          ${escapeHtml(tab)} (${countsByTab.get(tab) || 0})
-        </button>
-      `
-    )
-    .join('');
-
-  platformTabsWrap.querySelectorAll('button[data-platform-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activePlatformTab = btn.getAttribute('data-platform-tab');
+  const select = document.getElementById('platformSelect');
+  if (select) {
+    select.addEventListener('change', () => {
+      activePlatformTab = select.value || ALL_PLATFORMS_VALUE;
       sellerTableState.page = 1;
-      renderTabs();
       renderTable();
       if (searchInput) searchInput.focus();
     });
-  });
+  }
 }
 
 function selectedItems() {
@@ -1248,16 +1212,8 @@ function renderSelectedItems() {
 }
 
 function renderTable() {
-  if (!activePlatformTab && platformTabs.length > 0) {
-    activePlatformTab = isMobilePlatformUi ? ALL_PLATFORMS_VALUE : platformTabs[0];
-    renderTabs();
-  }
-
   if (!activePlatformTab) {
-    tableMeta.textContent = 'Buylist';
-    buylistWrap.innerHTML = '<p class="muted">No console tabs are configured.</p>';
-    if (sellerPaginationWrap) sellerPaginationWrap.innerHTML = '';
-    return;
+    activePlatformTab = ALL_PLATFORMS_VALUE;
   }
 
   const selectedPlatformLabel = activePlatformTab === ALL_PLATFORMS_VALUE ? 'All Platforms' : activePlatformTab;
@@ -1598,24 +1554,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('resize', syncTableViewportHeight);
-
-function handleMobilePlatformModeChange() {
-  const nextMode = mobilePlatformMedia.matches;
-  if (nextMode === isMobilePlatformUi) return;
-  isMobilePlatformUi = nextMode;
-  if (isSellerPageView) sellerTableState.page = 1;
-  if (!isMobilePlatformUi && activePlatformTab === ALL_PLATFORMS_VALUE) {
-    activePlatformTab = platformTabs[0] || '';
-  }
-  renderTabs();
-  renderTable();
-}
-
-if (mobilePlatformMedia.addEventListener) {
-  mobilePlatformMedia.addEventListener('change', handleMobilePlatformModeChange);
-} else if (mobilePlatformMedia.addListener) {
-  mobilePlatformMedia.addListener(handleMobilePlatformModeChange);
-}
 
 setInterval(() => {
   Promise.all([loadGames(), loadFaqs()]).catch(() => {});
