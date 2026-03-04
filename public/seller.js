@@ -56,6 +56,7 @@ const SELLER_ACTIVE_TAB_STORAGE_KEY = 'sellerActiveTab';
 const SELLER_RECENT_BATCHES_STORAGE_KEY = 'sellerRecentBatches';
 const SELLER_BATCHES_MAX = 20;
 const isSellerPageView = /\/seller(\.html)?$/i.test(window.location.pathname || '');
+const hasWorkspaceTabs = Boolean(workspaceTabsWrap && workspacePanels.length > 0);
 const DEFAULT_HOMEPAGE_FOOTER_LINKS = [
   { label: 'Contact', href: '/contact.html' },
   { label: 'Privacy Policy', href: '/privacy.html' },
@@ -838,7 +839,7 @@ function upsertRecentBatch(nextItem) {
 }
 
 async function runBatchLookup(params) {
-  if (isSellerPageView) {
+  if (hasWorkspaceTabs) {
     setWorkspaceTab('batches');
   }
   const submissionId = Number(params?.submissionId || batchLookupSubmissionIdInput?.value);
@@ -1097,7 +1098,7 @@ function updateMobileSubmitBar(total, rows) {
 
 function updateShipmentVisibility(total) {
   if (!shipmentSection) return;
-  if (isSellerPageView) {
+  if (hasWorkspaceTabs) {
     const shouldDisplaySection = sellerWorkspaceTab === 'shipment';
     shipmentSection.classList.toggle('is-hidden', !shouldDisplaySection);
     return;
@@ -1549,7 +1550,7 @@ form.addEventListener('submit', async (e) => {
 
 initConditionStandardsAccordion();
 setupMobileTitlePreview();
-if (isSellerPageView) {
+if (hasWorkspaceTabs) {
   renderRecentBatches();
   setWorkspaceTab(sellerWorkspaceTab, { persist: false });
 }

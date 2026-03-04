@@ -102,7 +102,13 @@
         </div>
       </section>
 
-      <section id="buylist-tool" class="card buylist-card">
+      <nav id="sellerWorkspaceTabs" class="seller-workspace-tabs" aria-label="Seller workspace">
+        <button type="button" class="seller-workspace-tab is-active" data-workspace-tab="buylist">Buylist</button>
+        <button type="button" class="seller-workspace-tab" data-workspace-tab="shipment">Shipment</button>
+        <button type="button" class="seller-workspace-tab" data-workspace-tab="batches">Batches</button>
+      </nav>
+
+      <section id="buylist-tool" class="card buylist-card" data-workspace-panel="buylist">
         <div id="stepProgress" class="step-progress" aria-label="Progress">
           <span class="step-pill is-active" data-step="1">Step 1: Add Games</span>
           <span class="step-pill" data-step="2">Step 2: Enter Info</span>
@@ -146,7 +152,7 @@
         <div id="buylistTableWrap" class="buylist-table-wrap"></div>
       </section>
 
-      <section id="shipmentSection" class="card is-hidden">
+      <section id="shipmentSection" class="card is-hidden" data-workspace-panel="shipment">
         <h2 style="margin-top: 0">Shipment Submission</h2>
         <p class="muted">Qty changes from the console table are tracked here automatically.</p>
         <div class="notice warn">
@@ -173,6 +179,34 @@
           <button type="submit">Submit & Generate Packing Slip</button>
         </form>
         <div id="shipmentPreview"></div>
+      </section>
+
+      <section id="batchesSection" class="card is-hidden" data-workspace-panel="batches">
+        <h2 style="margin-top: 0">Batches</h2>
+        <p class="muted">Track in-progress and past submissions without creating an account.</p>
+        <div class="grid" style="gap: 0.8rem">
+          <section class="card batches-subcard">
+            <h3 style="margin-top: 0">Current Batch (In Progress)</h3>
+            <div id="currentBatchSummary" class="muted">No games added yet.</div>
+          </section>
+
+          <section class="card batches-subcard">
+            <h3 style="margin-top: 0">Find a Batch</h3>
+            <form id="batchLookupForm" class="grid two">
+              <input id="batchLookupSubmissionId" type="number" min="1" step="1" placeholder="Submission ID" required />
+              <input id="batchLookupEmail" type="email" placeholder="Submission email" required />
+              <button id="batchLookupSubmit" type="submit">Find Batch</button>
+              <button id="batchLookupClear" type="button" class="secondary">Clear</button>
+            </form>
+            <div id="batchLookupMessage"></div>
+            <div id="batchLookupResult"></div>
+          </section>
+
+          <section class="card batches-subcard">
+            <h3 style="margin-top: 0">Recent Batches</h3>
+            <div id="recentBatchesWrap" class="muted">No recent batches yet.</div>
+          </section>
+        </div>
       </section>
 
       <section id="condition-standards" class="card policy-section section-sep">
