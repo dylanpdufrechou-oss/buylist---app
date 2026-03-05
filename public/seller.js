@@ -2,9 +2,6 @@ const buylistWrap = document.getElementById('buylistTableWrap');
 const platformTabsWrap = document.getElementById('platformTabs');
 const searchInput = document.getElementById('search');
 const clearSearchBtn = document.getElementById('clearSearch');
-const rowsPerPageInput = document.getElementById('sellerRowsPerPage') || document.getElementById('homeRowsPerPage');
-const paginationWrap = document.getElementById('sellerPagination') || document.getElementById('homePagination');
-const viewingPerPageText = document.getElementById('homeViewingPerPage');
 const stickyPayout = document.getElementById('stickyPayout');
 const mobileSubmitAmount = document.getElementById('mobileSubmitAmount');
 const mobileSubmitCount = document.getElementById('mobileSubmitCount');
@@ -50,15 +47,10 @@ const TITLE_PREVIEW_HOLD_MS = 220;
 const PACKING_SLIP_SESSION_KEY = 'ibgPackingSlipPayload';
 const PACKING_SLIP_LOCAL_KEY = 'ibgPackingSlipPayloadBackup';
 const PACKING_SLIP_PATH = '/packing-slip.html';
-const SELLER_ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
-const SELLER_ROWS_PER_PAGE_DEFAULT = 25;
-const PUBLIC_ROWS_PER_PAGE_STORAGE_KEY = 'publicRowsPerPage';
-const LEGACY_ROWS_PER_PAGE_STORAGE_KEYS = ['sellerRowsPerPage', 'homeRowsPerPage'];
 const SELLER_ACTIVE_TAB_STORAGE_KEY = 'sellerActiveTab';
 const SELLER_RECENT_BATCHES_STORAGE_KEY = 'sellerRecentBatches';
 const SELLER_BATCHES_MAX = 20;
 const hasWorkspaceTabs = Boolean(workspaceTabsWrap && workspacePanels.length > 0);
-const hasPagedTableControls = Boolean(rowsPerPageInput || paginationWrap);
 const DEFAULT_HOMEPAGE_FOOTER_LINKS = [
   { label: 'Contact', href: '/contact.html' },
   { label: 'Privacy Policy', href: '/privacy.html' },
@@ -77,10 +69,6 @@ let titlePreviewBubble = null;
 let titlePreviewHoldTimer = 0;
 let titlePreviewTrigger = null;
 let titlePreviewHoldTriggered = false;
-let sellerTableState = {
-  page: 1,
-  pageSize: loadSellerRowsPerPagePreference(),
-};
 let sellerWorkspaceTab = loadWorkspaceTabPreference();
 let recentBatches = loadRecentBatches();
 
@@ -128,34 +116,6 @@ async function loadPublicSiteConfig() {
 
 function asMoney(price) {
   return `$${Number(price).toFixed(2)}`;
-}
-
-function normalizeSellerRowsPerPage(value) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed)) return SELLER_ROWS_PER_PAGE_DEFAULT;
-  return SELLER_ROWS_PER_PAGE_OPTIONS.includes(parsed) ? parsed : SELLER_ROWS_PER_PAGE_DEFAULT;
-}
-
-function loadSellerRowsPerPagePreference() {
-  try {
-    const shared = localStorage.getItem(PUBLIC_ROWS_PER_PAGE_STORAGE_KEY);
-    if (shared !== null) return normalizeSellerRowsPerPage(shared);
-    for (const legacyKey of LEGACY_ROWS_PER_PAGE_STORAGE_KEYS) {
-      const legacyValue = localStorage.getItem(legacyKey);
-      if (legacyValue !== null) return normalizeSellerRowsPerPage(legacyValue);
-    }
-    return SELLER_ROWS_PER_PAGE_DEFAULT;
-  } catch {
-    return SELLER_ROWS_PER_PAGE_DEFAULT;
-  }
-}
-
-function saveSellerRowsPerPagePreference(pageSize) {
-  try {
-    localStorage.setItem(PUBLIC_ROWS_PER_PAGE_STORAGE_KEY, String(normalizeSellerRowsPerPage(pageSize)));
-  } catch {
-    // Ignore localStorage failures.
-  }
 }
 
 function normalizeWorkspaceTab(raw) {
@@ -221,16 +181,6 @@ function saveRecentBatches(list) {
     localStorage.setItem(SELLER_RECENT_BATCHES_STORAGE_KEY, JSON.stringify(recentBatches));
   } catch {
     // Ignore localStorage failures.
-  }
-}
-
-function syncSellerRowsPerPageControl() {
-  const normalized = normalizeSellerRowsPerPage(sellerTableState.pageSize);
-  if (rowsPerPageInput) {
-    rowsPerPageInput.value = String(normalized);
-  }
-  if (viewingPerPageText) {
-    viewingPerPageText.textContent = `Viewing ${normalized} per page`;
   }
 }
 
@@ -992,7 +942,6 @@ function renderTabs() {
   if (select) {
     select.addEventListener('change', () => {
       activePlatformTab = select.value || ALL_PLATFORMS_VALUE;
-      sellerTableState.page = 1;
       renderTable();
       if (searchInput) searchInput.focus();
     });
@@ -1116,47 +1065,6 @@ function getFilteredGames() {
   return platformRows.filter((g) => String(g.title || '').toLowerCase().includes(q));
 }
 
-function renderSellerPagination(totalRows, pageRows, startIndex, totalPages) {
-  if (!paginationWrap) return;
-  paginationWrap.innerHTML = '';
-  if (totalRows <= 0) {
-    return;
-  }
-
-  const prevBtn = document.createElement('button');
-  prevBtn.type = 'button';
-  prevBtn.className = 'secondary';
-  prevBtn.textContent = 'Prev';
-  prevBtn.disabled = sellerTableState.page <= 1;
-
-  const nextBtn = document.createElement('button');
-  nextBtn.type = 'button';
-  nextBtn.className = 'secondary';
-  nextBtn.textContent = 'Next';
-  nextBtn.disabled = sellerTableState.page >= totalPages;
-
-  const start = startIndex + 1;
-  const end = startIndex + pageRows.length;
-  const count = document.createElement('span');
-  count.className = 'muted';
-  count.textContent = `Showing ${start}\u2013${end} of ${totalRows}`;
-
-  const page = document.createElement('span');
-  page.className = 'muted';
-  page.textContent = `Page ${sellerTableState.page} of ${totalPages}`;
-
-  prevBtn.addEventListener('click', () => {
-    sellerTableState.page = Math.max(1, sellerTableState.page - 1);
-    renderTable();
-  });
-  nextBtn.addEventListener('click', () => {
-    sellerTableState.page = Math.min(totalPages, sellerTableState.page + 1);
-    renderTable();
-  });
-
-  paginationWrap.append(prevBtn, nextBtn, page, count);
-}
-
 function getSelectionSummary() {
   const rows = selectedItems();
   const total = rows.reduce((sum, item) => sum + item.quantity * item.price, 0);
@@ -1232,28 +1140,7 @@ function renderTable() {
   const selectedPlatformLabel = activePlatformTab === ALL_PLATFORMS_VALUE ? 'All Platforms' : activePlatformTab;
   const platformRows = getGamesForPlatform(activePlatformTab);
   const filtered = getFilteredGames();
-  let pagedRows = filtered;
-  let startIndex = 0;
-  let totalPages = 1;
-
-  if (hasPagedTableControls) {
-    const pageSize = normalizeSellerRowsPerPage(sellerTableState.pageSize);
-    sellerTableState.pageSize = pageSize;
-    totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-    sellerTableState.page = Math.min(Math.max(1, sellerTableState.page), totalPages);
-    startIndex = filtered.length > 0 ? (sellerTableState.page - 1) * pageSize : 0;
-    pagedRows = filtered.slice(startIndex, startIndex + pageSize);
-    syncSellerRowsPerPageControl();
-    if (filtered.length > 0) {
-      tableMeta.textContent = `Showing ${startIndex + 1}\u2013${startIndex + pagedRows.length} of ${filtered.length} in ${selectedPlatformLabel}`;
-    } else {
-      tableMeta.textContent = `Showing 0 of 0 in ${selectedPlatformLabel}`;
-    }
-    renderSellerPagination(filtered.length, pagedRows, startIndex, totalPages);
-  } else {
-    tableMeta.textContent = `Showing ${filtered.length} of ${platformRows.length} in ${selectedPlatformLabel}`;
-    if (paginationWrap) paginationWrap.innerHTML = '';
-  }
+  tableMeta.textContent = `Showing ${filtered.length} of ${platformRows.length} in ${selectedPlatformLabel}`;
 
   if (filtered.length === 0) {
     buylistWrap.innerHTML = `<p class="muted">No matching games found for ${escapeHtml(selectedPlatformLabel)}.</p>`;
@@ -1263,7 +1150,7 @@ function renderTable() {
     return;
   }
 
-  const rowsToRender = hasPagedTableControls ? pagedRows : filtered;
+  const rowsToRender = filtered;
 
   buylistWrap.innerHTML = `
     <table class="sheet-table">
@@ -1355,7 +1242,6 @@ async function loadFaqs() {
 
 if (searchInput) {
   searchInput.addEventListener('input', () => {
-    if (hasPagedTableControls) sellerTableState.page = 1;
     renderTable();
   });
 
@@ -1374,19 +1260,6 @@ if (clearSearchBtn) {
       searchInput.value = '';
       searchInput.focus();
     }
-    if (hasPagedTableControls) sellerTableState.page = 1;
-    renderTable();
-  });
-}
-
-if (rowsPerPageInput) {
-  syncSellerRowsPerPageControl();
-  rowsPerPageInput.addEventListener('change', () => {
-    const next = normalizeSellerRowsPerPage(rowsPerPageInput.value);
-    sellerTableState.pageSize = next;
-    sellerTableState.page = 1;
-    saveSellerRowsPerPagePreference(next);
-    syncSellerRowsPerPageControl();
     renderTable();
   });
 }
