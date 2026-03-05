@@ -36,7 +36,28 @@
           />
         </a>
         <h1 class="sr-only">I_BuyGames Buylist</h1>
-        <a href="/" class="top-nav-home">Home</a>
+        <div class="top-nav-actions">
+          <div class="info-menu" data-info-menu>
+            <button
+              type="button"
+              class="top-nav-home info-menu-trigger"
+              data-info-menu-trigger
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              Info
+            </button>
+            <nav class="info-menu-panel" data-info-menu-panel aria-label="Info links">
+              <a href="/info.html#guidelines">Guidelines</a>
+              <a href="/info.html#shipping">Shipping</a>
+              <a href="/info.html#faq">FAQ</a>
+              <a href="/privacy.html">Privacy Policy</a>
+              <a href="/terms.html">Terms of Service</a>
+              <a href="/contact.html">Contact Us</a>
+            </nav>
+          </div>
+          <a href="/" class="top-nav-home">Home</a>
+        </div>
       </header>
 
       <nav id="sellerWorkspaceTabs" class="seller-workspace-tabs" aria-label="Seller workspace">
@@ -144,6 +165,7 @@
       </section>
 
     </main>
+    <script src="/info-menu.js"></script>
     <script src="/table-align.js"></script>
     <script src="/seller.js"></script>
   </body>

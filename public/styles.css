@@ -158,6 +158,63 @@ header {
   background: rgba(20, 34, 72, 0.86);
 }
 
+.top-nav-actions {
+  grid-column: 3;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.top-nav-actions .top-nav-home {
+  grid-column: auto;
+  justify-self: auto;
+}
+
+.info-menu {
+  position: relative;
+}
+
+.info-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  min-width: 214px;
+  display: none;
+  z-index: 1200;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(11, 19, 48, 0.97);
+  box-shadow: var(--shadow);
+  padding: 0.34rem;
+}
+
+.info-menu-panel a {
+  display: block;
+  color: #dce9ff;
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 0.42rem 0.52rem;
+  border-radius: 8px;
+}
+
+.info-menu-panel a:hover,
+.info-menu-panel a:focus-visible {
+  background: rgba(58, 94, 156, 0.28);
+  color: #f8fbff;
+}
+
+.info-menu.is-open .info-menu-panel,
+.info-menu:focus-within .info-menu-panel {
+  display: block;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .info-menu:hover .info-menu-panel {
+    display: block;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .brand-link:hover .brand-logo {
     filter: brightness(1.06) drop-shadow(0 7px 18px rgba(25, 240, 255, 0.25));
@@ -2057,6 +2114,10 @@ input[type='checkbox'] {
   margin-top: 0.75rem;
 }
 
+.info-page .info-card {
+  scroll-margin-top: 6.6rem;
+}
+
 .trust-microcopy {
   display: grid;
   gap: 0.3rem;
@@ -2449,6 +2510,14 @@ body.retro-theme {
     font-size: 0.84rem;
   }
 
+  .top-nav-actions {
+    gap: 0.35rem;
+  }
+
+  .info-menu-panel {
+    min-width: 192px;
+  }
+
   .hero-cta-row {
     flex-direction: column;
   }
@@ -2637,6 +2706,10 @@ body.retro-theme {
 }
 
 @media (max-width: 640px) {
+  .home-page .hero-panel {
+    display: none;
+  }
+
   .packing-slip-shell {
     width: min(94vw, 860px);
     margin: 0.8rem auto 1.2rem;
@@ -2670,6 +2743,17 @@ body.retro-theme {
 
   .seller-page-size-label span {
     font-size: 0.72rem;
+  }
+
+  .top-nav-actions {
+    gap: 0.3rem;
+  }
+
+  .info-menu-panel {
+    right: 0;
+    left: auto;
+    min-width: 180px;
+    max-width: min(86vw, 260px);
   }
 
   .seller-page-size-label select {

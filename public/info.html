@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Info - I_BuyGames Buylist</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="retro-theme info-page">
+    <main class="container">
+      <header class="top-nav">
+        <a href="/" class="brand-link" aria-label="I_BuyGames Buylist home">
+          <img
+            src="/assets/logo-original.png"
+            onerror="this.onerror=null;this.src='/assets/ibuygames-buylist-logo.svg';"
+            alt="I_BuyGames Buylist"
+            class="brand-logo"
+            width="1040"
+            height="260"
+          />
+        </a>
+        <h1 class="sr-only">I_BuyGames Buylist</h1>
+        <div class="top-nav-actions">
+          <div class="info-menu" data-info-menu>
+            <button
+              type="button"
+              class="top-nav-home info-menu-trigger"
+              data-info-menu-trigger
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              Info
+            </button>
+            <nav class="info-menu-panel" data-info-menu-panel aria-label="Info links">
+              <a href="/info.html#guidelines">Guidelines</a>
+              <a href="/info.html#shipping">Shipping</a>
+              <a href="/info.html#faq">FAQ</a>
+              <a href="/privacy.html">Privacy Policy</a>
+              <a href="/terms.html">Terms of Service</a>
+              <a href="/contact.html">Contact Us</a>
+            </nav>
+          </div>
+          <a href="/" class="top-nav-home">Home</a>
+        </div>
+      </header>
+
+      <section id="guidelines" class="card info-card">
+        <h2 style="margin-top: 0">Guidelines</h2>
+        <p class="policy-badge">CIB Only - Strict Standards</p>
+        <p class="policy-lead">
+          <strong>We currently accept 9/10 Complete In Box (CIB) copies only.</strong>
+        </p>
+        <p class="muted policy-lead-sub">No loose, incomplete, or reproduction copies.</p>
+
+        <div class="policy-grid">
+          <article class="policy-card">
+            <h3><span class="policy-icon" aria-hidden="true">&#128230;</span> CIB Requirements</h3>
+            <p>Each game must include:</p>
+            <ul>
+              <li>Original case</li>
+              <li>Original cover artwork insert</li>
+              <li>Original manual (if originally included)</li>
+              <li>All original inserts</li>
+              <li>Correct disc or cartridge</li>
+            </ul>
+          </article>
+
+          <article class="policy-card">
+            <h3><span class="policy-icon" aria-hidden="true">&#11088;</span> Condition Standard</h3>
+            <p>
+              Games must be clean and fully intact. No major scratches, cracks, water damage, heavy wear, or artwork
+              damage. Light shelf wear is acceptable.
+            </p>
+          </article>
+
+          <article class="policy-card">
+            <h3><span class="policy-icon" aria-hidden="true">&#9888;</span> Additional Requirements</h3>
+            <ul>
+              <li>Wii U and Nintendo 3DS titles must include the original white insert.</li>
+              <li>No GameStop stickers on the artwork insert (stickers on outer case are acceptable).</li>
+              <li>Reprinted or reproduction artwork is not accepted.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="shipping" class="card info-card">
+        <h2 style="margin-top: 0">Shipping</h2>
+        <p class="policy-speed">Most orders are processed within 48 hours of arrival.</p>
+        <ul>
+          <li>Use bubble wrap to protect cases.</li>
+          <li>Do not ship loose discs.</li>
+          <li>Include your printed packing slip in every box.</li>
+          <li>Tracking is required for all shipments.</li>
+          <li>Secure contents tightly to prevent case cracking.</li>
+        </ul>
+      </section>
+
+      <section id="faq" class="card info-card">
+        <h2 style="margin-top: 0">Frequently Asked Questions</h2>
+        <div id="infoFaqList" class="faq-list"></div>
+      </section>
+    </main>
+
+    <script src="/info-menu.js"></script>
+    <script src="/info.js"></script>
+  </body>
+</html>
