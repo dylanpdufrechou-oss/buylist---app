@@ -2436,6 +2436,10 @@ body.retro-theme {
   flex-wrap: wrap;
 }
 
+.mobile-title-hint {
+  display: none;
+}
+
 .home-table-controls {
   display: inline-flex;
   align-items: center;
@@ -2708,6 +2712,18 @@ body.retro-theme {
 @media (max-width: 640px) {
   .home-page .hero-panel {
     display: none;
+  }
+
+  .mobile-title-hint {
+    display: block;
+    margin: 0.32rem 0 0.42rem;
+    padding: 0.34rem 0.52rem;
+    border-radius: 9px;
+    border: 1px solid rgba(98, 126, 173, 0.52);
+    background: rgba(17, 28, 62, 0.62);
+    color: #c8d7ee;
+    font-size: 0.74rem;
+    line-height: 1.35;
   }
 
   .packing-slip-shell {
