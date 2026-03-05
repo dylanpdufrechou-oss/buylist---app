@@ -2,8 +2,9 @@ const buylistWrap = document.getElementById('buylistTableWrap');
 const platformTabsWrap = document.getElementById('platformTabs');
 const searchInput = document.getElementById('search');
 const clearSearchBtn = document.getElementById('clearSearch');
-const sellerRowsPerPageInput = document.getElementById('sellerRowsPerPage');
-const sellerPaginationWrap = document.getElementById('sellerPagination');
+const rowsPerPageInput = document.getElementById('sellerRowsPerPage') || document.getElementById('homeRowsPerPage');
+const paginationWrap = document.getElementById('sellerPagination') || document.getElementById('homePagination');
+const viewingPerPageText = document.getElementById('homeViewingPerPage');
 const stickyPayout = document.getElementById('stickyPayout');
 const mobileSubmitAmount = document.getElementById('mobileSubmitAmount');
 const mobileSubmitCount = document.getElementById('mobileSubmitCount');
@@ -51,12 +52,13 @@ const PACKING_SLIP_LOCAL_KEY = 'ibgPackingSlipPayloadBackup';
 const PACKING_SLIP_PATH = '/packing-slip.html';
 const SELLER_ROWS_PER_PAGE_OPTIONS = [10, 20, 25, 50, 100];
 const SELLER_ROWS_PER_PAGE_DEFAULT = 25;
-const SELLER_ROWS_PER_PAGE_STORAGE_KEY = 'sellerRowsPerPage';
+const PUBLIC_ROWS_PER_PAGE_STORAGE_KEY = 'publicRowsPerPage';
+const LEGACY_ROWS_PER_PAGE_STORAGE_KEYS = ['sellerRowsPerPage', 'homeRowsPerPage'];
 const SELLER_ACTIVE_TAB_STORAGE_KEY = 'sellerActiveTab';
 const SELLER_RECENT_BATCHES_STORAGE_KEY = 'sellerRecentBatches';
 const SELLER_BATCHES_MAX = 20;
-const isSellerPageView = /\/seller(\.html)?$/i.test(window.location.pathname || '');
 const hasWorkspaceTabs = Boolean(workspaceTabsWrap && workspacePanels.length > 0);
+const hasPagedTableControls = Boolean(rowsPerPageInput || paginationWrap);
 const DEFAULT_HOMEPAGE_FOOTER_LINKS = [
   { label: 'Contact', href: '/contact.html' },
   { label: 'Privacy Policy', href: '/privacy.html' },
@@ -136,7 +138,13 @@ function normalizeSellerRowsPerPage(value) {
 
 function loadSellerRowsPerPagePreference() {
   try {
-    return normalizeSellerRowsPerPage(localStorage.getItem(SELLER_ROWS_PER_PAGE_STORAGE_KEY));
+    const shared = localStorage.getItem(PUBLIC_ROWS_PER_PAGE_STORAGE_KEY);
+    if (shared !== null) return normalizeSellerRowsPerPage(shared);
+    for (const legacyKey of LEGACY_ROWS_PER_PAGE_STORAGE_KEYS) {
+      const legacyValue = localStorage.getItem(legacyKey);
+      if (legacyValue !== null) return normalizeSellerRowsPerPage(legacyValue);
+    }
+    return SELLER_ROWS_PER_PAGE_DEFAULT;
   } catch {
     return SELLER_ROWS_PER_PAGE_DEFAULT;
   }
@@ -144,7 +152,7 @@ function loadSellerRowsPerPagePreference() {
 
 function saveSellerRowsPerPagePreference(pageSize) {
   try {
-    localStorage.setItem(SELLER_ROWS_PER_PAGE_STORAGE_KEY, String(normalizeSellerRowsPerPage(pageSize)));
+    localStorage.setItem(PUBLIC_ROWS_PER_PAGE_STORAGE_KEY, String(normalizeSellerRowsPerPage(pageSize)));
   } catch {
     // Ignore localStorage failures.
   }
@@ -217,8 +225,13 @@ function saveRecentBatches(list) {
 }
 
 function syncSellerRowsPerPageControl() {
-  if (!sellerRowsPerPageInput) return;
-  sellerRowsPerPageInput.value = String(normalizeSellerRowsPerPage(sellerTableState.pageSize));
+  const normalized = normalizeSellerRowsPerPage(sellerTableState.pageSize);
+  if (rowsPerPageInput) {
+    rowsPerPageInput.value = String(normalized);
+  }
+  if (viewingPerPageText) {
+    viewingPerPageText.textContent = `Viewing ${normalized} per page`;
+  }
 }
 
 function formatSignedMoneyFromCents(cents) {
@@ -1104,8 +1117,8 @@ function getFilteredGames() {
 }
 
 function renderSellerPagination(totalRows, pageRows, startIndex, totalPages) {
-  if (!sellerPaginationWrap || !isSellerPageView) return;
-  sellerPaginationWrap.innerHTML = '';
+  if (!paginationWrap) return;
+  paginationWrap.innerHTML = '';
   if (totalRows <= 0) {
     return;
   }
@@ -1141,7 +1154,7 @@ function renderSellerPagination(totalRows, pageRows, startIndex, totalPages) {
     renderTable();
   });
 
-  sellerPaginationWrap.append(prevBtn, nextBtn, page, count);
+  paginationWrap.append(prevBtn, nextBtn, page, count);
 }
 
 function getSelectionSummary() {
@@ -1223,7 +1236,7 @@ function renderTable() {
   let startIndex = 0;
   let totalPages = 1;
 
-  if (isSellerPageView) {
+  if (hasPagedTableControls) {
     const pageSize = normalizeSellerRowsPerPage(sellerTableState.pageSize);
     sellerTableState.pageSize = pageSize;
     totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -1239,7 +1252,7 @@ function renderTable() {
     renderSellerPagination(filtered.length, pagedRows, startIndex, totalPages);
   } else {
     tableMeta.textContent = `Showing ${filtered.length} of ${platformRows.length} in ${selectedPlatformLabel}`;
-    if (sellerPaginationWrap) sellerPaginationWrap.innerHTML = '';
+    if (paginationWrap) paginationWrap.innerHTML = '';
   }
 
   if (filtered.length === 0) {
@@ -1250,7 +1263,7 @@ function renderTable() {
     return;
   }
 
-  const rowsToRender = isSellerPageView ? pagedRows : filtered;
+  const rowsToRender = hasPagedTableControls ? pagedRows : filtered;
 
   buylistWrap.innerHTML = `
     <table class="sheet-table">
@@ -1342,7 +1355,7 @@ async function loadFaqs() {
 
 if (searchInput) {
   searchInput.addEventListener('input', () => {
-    if (isSellerPageView) sellerTableState.page = 1;
+    if (hasPagedTableControls) sellerTableState.page = 1;
     renderTable();
   });
 
@@ -1361,18 +1374,19 @@ if (clearSearchBtn) {
       searchInput.value = '';
       searchInput.focus();
     }
-    if (isSellerPageView) sellerTableState.page = 1;
+    if (hasPagedTableControls) sellerTableState.page = 1;
     renderTable();
   });
 }
 
-if (sellerRowsPerPageInput) {
+if (rowsPerPageInput) {
   syncSellerRowsPerPageControl();
-  sellerRowsPerPageInput.addEventListener('change', () => {
-    const next = normalizeSellerRowsPerPage(sellerRowsPerPageInput.value);
+  rowsPerPageInput.addEventListener('change', () => {
+    const next = normalizeSellerRowsPerPage(rowsPerPageInput.value);
     sellerTableState.pageSize = next;
     sellerTableState.page = 1;
     saveSellerRowsPerPagePreference(next);
+    syncSellerRowsPerPageControl();
     renderTable();
   });
 }
