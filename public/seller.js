@@ -1112,9 +1112,9 @@ function renderSelectedItems() {
                 <td>${escapeHtml(game?.title || '')}</td>
                 <td>${escapeHtml(game?.platform || '')}</td>
                 <td>${asMoney(row.price)}</td>
-                <td><input type="number" min="0" step="1" value="${row.quantity}" data-summary-game-id="${
+                <td><input class="shipment-qty-input" type="number" min="0" step="1" value="${row.quantity}" data-summary-game-id="${
                   row.gameId
-                }" style="width: 88px" /></td>
+                }" /></td>
                 <td>${asMoney(lineTotal)}</td>
               </tr>
             `;

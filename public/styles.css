@@ -1955,7 +1955,6 @@ input[type='checkbox'] {
 #selectedItemsWrap input[type='number'] {
   text-align: center;
   font-weight: 700;
-  min-width: 80px;
 }
 
 .qty-cell {
@@ -1966,6 +1965,11 @@ input[type='checkbox'] {
 
 .qty-cell input[type='number'] {
   max-width: 88px;
+}
+
+.shipment-qty-input {
+  width: 88px;
+  max-width: 100%;
 }
 
 .add-btn {
@@ -2686,47 +2690,47 @@ body.retro-theme {
     width: 100%;
   }
 
-  .buylist-table-wrap .sheet-table th,
-  .buylist-table-wrap .sheet-table td {
+  #buylistTableWrap .sheet-table th,
+  #buylistTableWrap .sheet-table td {
     box-sizing: border-box;
     overflow: hidden;
   }
 
   /* Keep mobile columns separated so price never bleeds into QTY */
-  .buylist-table-wrap .sheet-table th:nth-child(1),
-  .buylist-table-wrap .sheet-table td:nth-child(1) {
+  #buylistTableWrap .sheet-table th:nth-child(1),
+  #buylistTableWrap .sheet-table td:nth-child(1) {
     width: 40%;
   }
 
-  .buylist-table-wrap .sheet-table th:nth-child(2),
-  .buylist-table-wrap .sheet-table td:nth-child(2) {
+  #buylistTableWrap .sheet-table th:nth-child(2),
+  #buylistTableWrap .sheet-table td:nth-child(2) {
     width: 11%;
   }
 
-  .buylist-table-wrap .sheet-table th:nth-child(3),
-  .buylist-table-wrap .sheet-table td:nth-child(3) {
+  #buylistTableWrap .sheet-table th:nth-child(3),
+  #buylistTableWrap .sheet-table td:nth-child(3) {
     width: 19%;
     white-space: nowrap;
   }
 
-  .buylist-table-wrap .sheet-table th:nth-child(4),
-  .buylist-table-wrap .sheet-table td:nth-child(4) {
+  #buylistTableWrap .sheet-table th:nth-child(4),
+  #buylistTableWrap .sheet-table td:nth-child(4) {
     width: 14%;
   }
 
-  .buylist-table-wrap .sheet-table th:nth-child(5),
-  .buylist-table-wrap .sheet-table td:nth-child(5) {
+  #buylistTableWrap .sheet-table th:nth-child(5),
+  #buylistTableWrap .sheet-table td:nth-child(5) {
     width: 16%;
   }
 
-  .buylist-table-wrap .qty-cell {
+  #buylistTableWrap .qty-cell {
     width: 100%;
     max-width: 100%;
     overflow: hidden;
   }
 
-  .buylist-table-wrap .qty-input,
-  .buylist-table-wrap .qty-cell input[type='number'] {
+  #buylistTableWrap .qty-input,
+  #buylistTableWrap .qty-cell input[type='number'] {
     width: 100%;
     min-width: 0;
     max-width: 100%;
@@ -2736,7 +2740,7 @@ body.retro-theme {
     box-sizing: border-box;
   }
 
-  .buylist-table-wrap .add-btn {
+  #buylistTableWrap .add-btn {
     width: 100%;
     min-width: 0;
     max-width: 100%;
@@ -2747,20 +2751,68 @@ body.retro-theme {
   }
 
   /* Keep payout value and delta text inside the price cell */
-  .buylist-table-wrap .sheet-table td:nth-child(3) .price-cell-stack {
+  #buylistTableWrap .sheet-table td:nth-child(3) .price-cell-stack {
     display: block;
     max-width: 100%;
     min-width: 0;
     overflow: hidden;
   }
 
-  .buylist-table-wrap .sheet-table td:nth-child(3) .price-cell-value,
-  .buylist-table-wrap .sheet-table td:nth-child(3) .price-delta-note {
+  #buylistTableWrap .sheet-table td:nth-child(3) .price-cell-value,
+  #buylistTableWrap .sheet-table td:nth-child(3) .price-delta-note {
     display: block;
     max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  #selectedItemsWrap .sheet-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  #selectedItemsWrap .sheet-table th,
+  #selectedItemsWrap .sheet-table td {
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #selectedItemsWrap .sheet-table th:nth-child(1),
+  #selectedItemsWrap .sheet-table td:nth-child(1) {
+    width: 35%;
+  }
+
+  #selectedItemsWrap .sheet-table th:nth-child(2),
+  #selectedItemsWrap .sheet-table td:nth-child(2) {
+    width: 15%;
+  }
+
+  #selectedItemsWrap .sheet-table th:nth-child(3),
+  #selectedItemsWrap .sheet-table td:nth-child(3) {
+    width: 18%;
+  }
+
+  #selectedItemsWrap .sheet-table th:nth-child(4),
+  #selectedItemsWrap .sheet-table td:nth-child(4) {
+    width: 12%;
+  }
+
+  #selectedItemsWrap .sheet-table th:nth-child(5),
+  #selectedItemsWrap .sheet-table td:nth-child(5) {
+    width: 20%;
+  }
+
+  #selectedItemsWrap .shipment-qty-input {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 30px;
+    padding: 0.16rem 0.22rem;
+    font-size: 0.74rem;
+    box-sizing: border-box;
   }
 
   .sticky-payout {
