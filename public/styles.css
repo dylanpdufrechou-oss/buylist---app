@@ -2716,11 +2716,15 @@ body.retro-theme {
   #buylistTableWrap .sheet-table th:nth-child(4),
   #buylistTableWrap .sheet-table td:nth-child(4) {
     width: 14%;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   #buylistTableWrap .sheet-table th:nth-child(5),
   #buylistTableWrap .sheet-table td:nth-child(5) {
     width: 16%;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   #buylistTableWrap .qty-cell {
@@ -2737,6 +2741,14 @@ body.retro-theme {
     min-height: 30px;
     padding: 0.16rem 0.22rem;
     font-size: 0.74rem;
+    box-sizing: border-box;
+  }
+
+  .compact .buylist-card #buylistTableWrap .qty-input,
+  .compact .buylist-card #buylistTableWrap .qty-cell input[type='number'] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     box-sizing: border-box;
   }
 
